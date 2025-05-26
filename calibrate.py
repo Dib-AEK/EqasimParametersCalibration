@@ -39,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-parameters", type=str, default="/home/dabdelkader/Work/Codes/Simulation_ch0p1/optimized_parameters.yml",
                         help="Path to output optimized YAML parameters file.")
     
-    parser.add_argument("--simulation-path", type=str, default="/home/dabdelkader/Work/Codes/Simulation_ch0p1/sim_output",
+    parser.add_argument("--variables-path", type=str, default="/home/dabdelkader/Work/Codes/Simulation_ch0p1/sim_output",
                         help="Base path to simulation outputs.")
     
     parser.add_argument("--iteration", type=int, default=1,
@@ -52,7 +52,7 @@ def parse_args() -> argparse.Namespace:
                         help="Parameter bounds as comma-separated key:value pairs")
     
     parser.add_argument("--metric", type=str, default="js",
-                        choices=["js", "mse", "mae"],
+                        choices=["mse", "mae", "cosine", "kl", "js", "hellinger", "tv"],
                         help="Metric to use for loss calculation (default: js)")
     
     parser.add_argument("--optimizer", type=str, default="ga",
@@ -83,7 +83,7 @@ def main():
         raise ValueError(f"Error parsing input dict: {e}")
 
     # Paths
-    sim_path = f"{args.simulation_path}/ITERS/it.{args.iteration}"
+    sim_path = args.variables_path
     bike_file = f"{sim_path}/{args.iteration}.choice_variables_bike.csv"
     pt_file = f"{sim_path}/{args.iteration}.choice_variables_pt.csv"
     car_file = f"{sim_path}/{args.iteration}.choice_variables_car.csv"
