@@ -50,7 +50,7 @@ myLoss = Loss(actual_mode_shares, metric = metric)
 optimizer = get_optimizer( method=optimizer,
                            objective_function=myLoss,
                            bounds=bounds,
-                           max_evals=100
+                           max_evals=10
                             ) 
 
 # Run optimization

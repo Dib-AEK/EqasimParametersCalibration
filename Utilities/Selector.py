@@ -17,16 +17,16 @@ class Selector():
     minimum_utility = -700.0
     maximum_utility = 700.0
     considerMinimumUtility = False
-    selector = "MultinomialLogitSelector"  # one of ["MultinomialLogitSelector", "MaximumUtilitySelector"]
+    selector = "MultinomialLogit"  # one of ["MultinomialLogit", "Maximum"]
 
     @staticmethod
     def get_mode_shares_from_tours(tours: pd.DataFrame):
         # Reduce to only relevant columns early
         utilities = tours[["person_id", "selection_id", "candidate_mode", "utility"]]
 
-        if Selector.selector == "MultinomialLogitSelector":
+        if Selector.selector == "MultinomialLogit":
             return Selector._multinomial_logit_selection(utilities)
-        elif Selector.selector == "MaximumUtilitySelector":
+        elif Selector.selector == "Maximum":
             return Selector._maximum_utility_selection(utilities)
         else:
             raise ValueError(f"Unknown selector: {Selector.selector}")

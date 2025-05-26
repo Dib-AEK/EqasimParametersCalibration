@@ -22,16 +22,22 @@ class Parameters(ABC):
     """
 
     class bike:
-        betaStatedPreferenceRegion3_u: float = -0.366
         alpha_u: float = 0.344
         betaTravelTime_u_min: float = -0.09
         betaAgeOver18_u_a: float = -0.049
+
+    class swissBike:
+        betaStatedPreferenceRegion3_u: float = -0.366
 
     class car:
         alpha_u: float = 0.827
         betaTravelTime_u_min: float = -0.067
         additionalAccessEgressWalkTime_min: float = 4.0
         constantParkingSearchPenalty_min: float = 4.0
+        betaStatedPreferenceRegion1_u: float = -0.4
+        betaStatedPreferenceRegion3_u: float = 0.4
+
+    class swissCar:
         betaStatedPreferenceRegion1_u: float = -0.4
         betaStatedPreferenceRegion3_u: float = 0.4
 

@@ -31,6 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Mode share optimization tool.")
 
     parser.add_argument("--selector", type=str, default="MaximumUtilitySelector",
+                        choices=["MultinomialLogit","Maximum"],
                         help="Selector class to use (default: MaximumUtilitySelector)")
     
     parser.add_argument("--input-parameters", type=str, default="/home/dabdelkader/Work/Codes/Simulation_ch0p1/parameters.yml",

@@ -13,8 +13,8 @@ class CarUtility(BaseUtility):
     
     @staticmethod
     def estimateRegionalUtility(variables):
-        beta1 = BaseUtility.car.betaStatedPreferenceRegion1_u
-        beta3 = BaseUtility.car.betaStatedPreferenceRegion3_u
+        beta1 = BaseUtility.swissCar.betaStatedPreferenceRegion1_u
+        beta3 = BaseUtility.swissCar.betaStatedPreferenceRegion3_u
     
         if isinstance(variables, dict) or (isinstance(variables, pd.Series) and "statedPreferenceRegion" in variables and variables.ndim == 1):
             # Handles dict or row Series

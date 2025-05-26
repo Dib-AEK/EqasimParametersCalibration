@@ -15,7 +15,7 @@ class BikeUtility(BaseUtility):
     def estimateRegionalUtility(variables):
         #(BaseUtility.bike.betaStatedPreferenceRegion3_u if variables["statedPreferenceRegion"] == 3 else 0.0)
         beta1 = 0.0
-        beta3 = BaseUtility.bike.betaStatedPreferenceRegion3_u
+        beta3 = BaseUtility.swissBike.betaStatedPreferenceRegion3_u
     
         if isinstance(variables, dict) or (isinstance(variables, pd.Series) and "statedPreferenceRegion" in variables and variables.ndim == 1):
             # Handles dict or row Series
