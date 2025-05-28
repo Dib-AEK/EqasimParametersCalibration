@@ -21,6 +21,7 @@ from Utilities.Parameters import Parameters
 from Optimizer.OptimizersFactory import get_optimizer
 from Optimizer.MomentumsFactory import create_momentum
 from Optimizer.BetaRateRise import BetaRateRise
+from Optimizer.PopulationFactor import PopulationFactor
 
 # Initiate the logger
 import logging
@@ -107,25 +108,30 @@ def main():
     for path in [bike_file, pt_file, car_file, walk_file, tours_file]:
         if not os.path.isfile(path):
             raise FileNotFoundError(f"Required file does not exist: {path}")
+            
+    # Get initial beta and population
+    BetaRateRise.set_beta(args.beta_momentum)
+    beta = BetaRateRise.get_beta(args.iteration) 
 
+    PopulationFactor.set_population(args.population_sample)
+    population = PopulationFactor.get_population(args.iteration)
+            
     # Load parameters
     Parameters.from_yaml(args.input_parameters)
     Selector.set_selector(args.selector)
     
     # Initialize utility data
+    
     TourUtility.read_and_init(tours_file, {"car": car_file,
                                            "pt": pt_file,
                                            "bike": bike_file,
                                            "walk": walk_file }, 
-                              population_sample = args.population_sample)
+                              population_sample = population)
 
     # Setup loss function 
     myLoss = Loss(actual_mode_shares, metric=args.metric)    
 
-    # Set momuntum
-    BetaRateRise.set_beta(args.beta_momentum)
-    beta = BetaRateRise.get_beta(args.iteration) # allows to variate beta
-    
+    # Set momuntum   
     momuntum = create_momentum(momentum_type = args.momentum, 
                                momentum = beta)    
     initial_parameters = Parameters.get_parameters(bounds.keys()).copy()

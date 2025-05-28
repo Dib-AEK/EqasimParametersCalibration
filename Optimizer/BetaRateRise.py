@@ -7,9 +7,6 @@ Created on Wed May 28 17:20:16 2025
 """
 import numpy as np
 
-import numpy as np
-
-
 class BetaRateRise:
     _initial_beta = 0.8  # Default starting beta 
     
@@ -54,7 +51,7 @@ class BetaRateRise:
 
     # --- Rise Strategies ---
     @classmethod
-    def _step_rise(cls, iteration, drop_interval=50):
+    def _step_rise(cls, iteration, drop_interval=30):
         """Beta decreases step-wise every N iterations."""
         d = np.floor(iteration / drop_interval) + 1
         return 1 - (1 - cls._initial_beta) / d

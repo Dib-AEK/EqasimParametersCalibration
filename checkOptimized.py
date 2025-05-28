@@ -15,6 +15,7 @@ from Utilities.Selector import Selector
 from Optimizer.OptimizersFactory import get_optimizer
 from Optimizer.MomentumsFactory import create_momentum
 from Optimizer.BetaRateRise import BetaRateRise
+from Optimizer.PopulationFactor import PopulationFactor
 import os
 import time
 import datetime
@@ -42,21 +43,26 @@ car_file       = f"{simulation_file}/ITERS/it.{iteration}/{iteration}.choice_var
 walk_file      = f"{simulation_file}/ITERS/it.{iteration}/{iteration}.choice_variables_walk.csv" 
 tours_file     = f"{simulation_file}/ITERS/it.{iteration}/{iteration}.detailed_utilities.csv"
 
+# Get initial beta and population
+BetaRateRise.set_beta(beta)
+beta = BetaRateRise.get_beta(iteration) # allows to variate beta
 
+PopulationFactor.set_population(population_sample)
+population = PopulationFactor.get_population(iteration)
+
+
+# start loadiong data
 Parameters.from_yaml(input_parameters)
 Selector.set_selector(selector)
 TourUtility.read_and_init(tours_file,
                           {"car":car_file,"pt":pt_file,"bike":bike_file,"walk":walk_file},
-                          population_sample = population_sample)
+                          population_sample = population)
 
 # Get loss and momuntum
 myLoss = Loss(actual_mode_shares, metric = metric)
 momuntum = create_momentum("adam")
 
 # Set initial values for momuntum
-BetaRateRise.set_beta(beta)
-beta = BetaRateRise.get_beta(iteration) # allows to variate beta
-
 initial_parameters = Parameters.get_parameters(bounds.keys()).copy()
 momuntum.set_initial_values(initial_parameters)
 
@@ -66,6 +72,7 @@ optimizer = get_optimizer( method=optimizer,
                            bounds=bounds,
                            max_evals=100
                             ) 
+
 
 # Run optimization
 to = time.time()
