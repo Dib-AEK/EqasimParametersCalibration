@@ -20,6 +20,7 @@ from Utilities.Selector import Selector
 from Utilities.Parameters import Parameters
 from Optimizer.OptimizersFactory import get_optimizer
 from Optimizer.MomentumsFactory import create_momentum
+from Optimizer.BetaRateRise import BetaRateRise
 
 # Initiate the logger
 import logging
@@ -68,7 +69,7 @@ def parse_args() -> argparse.Namespace:
                         choices=["ema","adam"],
                         help="Momentum")
     
-    parser.add_argument("--beta-momentum", type=float, default=0.9, help="Momentum of the EMA")
+    parser.add_argument("--beta-momentum", type=float, default=0.8, help="Momentum of the EMA")
     
     parser.add_argument("--max-evals", type=int, default=100,                        
                         help="Maximum number of evaluation of the loss function")
@@ -110,7 +111,7 @@ def main():
     # Load parameters
     Parameters.from_yaml(args.input_parameters)
     Selector.set_selector(args.selector)
-
+    
     # Initialize utility data
     TourUtility.read_and_init(tours_file, {"car": car_file,
                                            "pt": pt_file,
@@ -122,8 +123,11 @@ def main():
     myLoss = Loss(actual_mode_shares, metric=args.metric)    
 
     # Set momuntum
+    BetaRateRise.set_beta(args.beta_momentum)
+    beta = BetaRateRise.get_beta(args.iteration) # allows to variate beta
+    
     momuntum = create_momentum(momentum_type = args.momentum, 
-                               momentum = args.beta_momentum)    
+                               momentum = beta)    
     initial_parameters = Parameters.get_parameters(bounds.keys()).copy()
     momuntum.set_initial_values(initial_parameters)
     

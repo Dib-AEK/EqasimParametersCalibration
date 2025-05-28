@@ -45,7 +45,7 @@ class ExponentialMovingAverage(MomentumBase):
     """
     def __init__(
         self,
-        cache_path: str = "./cache/ema_cache.json",
+        cache_path: str = "./calibrationCache/ema_cache.json",
         momentum: Optional[float] = None
     ):
         super().__init__(cache_path)
@@ -127,7 +127,7 @@ class AdamMomentum(MomentumBase):
     """
     def __init__(
         self,
-        cache_path: str = "./cache/adam_cache.json",
+        cache_path: str = "./calibrationCache/adam_cache.json",
         beta1: Optional[float] = None,
         beta2: Optional[float] = None,
         epsilon: Optional[float] = None,

@@ -14,6 +14,7 @@ from Utilities.Parameters import Parameters
 from Utilities.Selector import Selector
 from Optimizer.OptimizersFactory import get_optimizer
 from Optimizer.MomentumsFactory import create_momentum
+from Optimizer.BetaRateRise import BetaRateRise
 import os
 import time
 import datetime
@@ -26,6 +27,8 @@ input_parameters = "/home/dabdelkader/Work/Codes/Simulation_ch0p1/parameters.yml
 output_parameters = "/home/dabdelkader/Work/Codes/Simulation_ch0p1/optimized_parameters.yml"
 iteration = 10
 population_sample = 20000
+beta = 0.9
+
 
 actual_mode_shares = {"car":0.35, "pt": 0.2, "bike": 0.15,"walk": 0.25,"car_passenger":0.05}
 bounds = {"car.alpha_u": 0.1, "walk.alpha_u": 0.1, "bike.alpha_u": 0.1,}
@@ -51,6 +54,9 @@ myLoss = Loss(actual_mode_shares, metric = metric)
 momuntum = create_momentum("adam")
 
 # Set initial values for momuntum
+BetaRateRise.set_beta(beta)
+beta = BetaRateRise.get_beta(iteration) # allows to variate beta
+
 initial_parameters = Parameters.get_parameters(bounds.keys()).copy()
 momuntum.set_initial_values(initial_parameters)
 
