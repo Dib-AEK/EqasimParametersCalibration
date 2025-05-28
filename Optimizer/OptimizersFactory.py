@@ -6,7 +6,8 @@ Created on Thu May 22 14:07:21 2025
 @author: dabdelkader
 """
 from Optimizer.Optimizer import Optimizer
-
+from Utilities.BaseUtility import BaseUtility
+import numpy as np
 import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -21,12 +22,12 @@ scipy_methods = [ 'Nelder-Mead','Powell', 'CG',  'BFGS', 'Newton-CG','L-BFGS-B',
 
 def register_optimizer(name):
     def decorator(cls):
-        if name=="scipy":
+        if name.lower()=="scipy":
             for method in scipy_methods:
                 cls.method = method
                 _optimizer_registry["method"] = cls
         else:
-            _optimizer_registry[name] = cls
+            _optimizer_registry[name.lower()] = cls
         return cls
     return decorator
 
@@ -87,7 +88,8 @@ class TPEOptimizer(Optimizer):
             return self._objective(x)
 
         trials = Trials()
-        best = fmin(fn=objective, space=space, algo=tpe.suggest, max_evals=self.max_evals, trials=trials)
+        best = fmin(fn=objective, space=space, algo=tpe.suggest, max_evals=self.max_evals, 
+                    trials=trials, show_progressbar = False, verbose = False)
         return {"params": best, "loss": trials.best_trial['result']['loss']}
 
 
@@ -104,6 +106,7 @@ class CMAESOptimizer(Optimizer):
         es = cma.CMAEvolutionStrategy(x0, sigma, {'maxfevals': self.max_evals})
         while not es.stop():
             solutions = es.ask()
+            solutions = [np.clip(s,self.lb, self.ub) for s in solutions] #Enforce Respect of ub and lb
             es.tell(solutions, [self._objective(sol) for sol in solutions])
             es.disp()
 
@@ -295,8 +298,73 @@ class FiniteDifferenceAdamOptimizer(Optimizer):
 
 
 
+@register_optimizer("kai")
+class KaiOptimizer(Optimizer):
+    def optimize(self):
+        import numpy as np        
+        logger.info("Using Kai utility formula...")
 
+        modes = ["pt", "car", "walk", "bike"]
+        actual_mode_shares = self.get_actual_mode_shares(modes)
+        
+        max_iter = 10  # Max iterations to avoid expensive runs
+        tol = 5e-3     # Tolerance for convergence
+        prev_mode_shares = None
+        break_at_end = False
+        diff = np.nan
+        
+        for i in range(max_iter):
+            # Simulate only once per iteration
+            if i==0:
+                simulated_mode_shares = self.get_eqasim_mode_shares(modes) # less expensive, and available for first iteration
+            else:
+                simulated_mode_shares = self.get_estimated_mode_shares(modes)            
+            
+            # Check convergence by comparing with previous mode shares
+            if prev_mode_shares is not None:
+                diff = np.linalg.norm(np.array(list(simulated_mode_shares.values())) - 
+                                      np.array(list(prev_mode_shares.values())))
+                logger.info(f"Iteration {i}: Change in mode shares: {diff:.6f}")
+                if diff < tol:
+                    logger.info("Converged.")
+                    break_at_end = True
 
+            prev_mode_shares = simulated_mode_shares
+
+            # Update parameters using current simulated mode shares
+            optimal_params = self._one_iteration(simulated_mode_shares=simulated_mode_shares,
+                                                 actual_mode_shares = actual_mode_shares,
+                                                 iteration = i)
+            BaseUtility.set_parameters(optimal_params)
+            
+            if break_at_end:
+                break
+
+        return {"params": optimal_params, "loss": diff}
+
+    def _one_iteration(self, simulated_mode_shares, actual_mode_shares, iteration, beta = 0.8):
+        modes = ["pt", "car", "walk", "bike"]
+        params = [f"{mode}.alpha_u" for mode in modes]
+        
+        initial_parameters_values = self.get_current_parameters(params)
+
+        z0 = actual_mode_shares["pt"]  # Reference (e.g., pt)
+        m0 = simulated_mode_shares["pt"]  # Simulated reference share
+
+        zi = np.array([actual_mode_shares[i] for i in modes[1:]])  # Others: car, walk, bike
+        mi = np.array([simulated_mode_shares[i] for i in modes[1:]])
+        asci = np.array([initial_parameters_values[i] for i in params[1:]])
+
+        # Update parameters using Kai's formula
+        new_parameters_values = (
+            asci +
+            (np.log(zi) - np.log(mi)) -
+            (np.log(z0) - np.log(m0))
+        )
+        
+        beta = min(beta, 1-1/(0.5*iteration+1))
+        new_parameters_values = beta*asci+(1-beta)*new_parameters_values        
+        return dict(zip(params[1:], new_parameters_values.tolist()))
 
 
 

@@ -34,8 +34,6 @@ class Parameters(ABC):
         betaTravelTime_u_min: float = -0.067
         additionalAccessEgressWalkTime_min: float = 4.0
         constantParkingSearchPenalty_min: float = 4.0
-        betaStatedPreferenceRegion1_u: float = -0.4
-        betaStatedPreferenceRegion3_u: float = 0.4
 
     class swissCar:
         betaStatedPreferenceRegion1_u: float = -0.4
@@ -69,9 +67,9 @@ class Parameters(ABC):
                 for key, value in inspect.getmembers(obj):
                     if (not key.startswith('__')) and (isinstance(value, float)):
                         if name=="cost":
-                            data[key] = value
+                            data[key] = float(value)
                         else:                        
-                            data[name+"."+key] = value
+                            data[name+"."+key] = float(value)
 
         with open(file_path, 'w') as f:
             yaml.dump(data, f, sort_keys=False)
@@ -103,18 +101,19 @@ class Parameters(ABC):
         """
         Retrieve the parameter classes for the given names.
         """
-        out_dict = dict()
-        for name in parameters_names:
-            class_name, attr_name = name.split('.', 1)
-            param_class = getattr(Parameters, class_name, None)
-            if param_class is None:
-                raise ValueError(f"Unknown parameter: '{class_name}'")
+        if len(parameters_names):
+            out_dict = dict()
+            for name in parameters_names:
+                class_name, attr_name = name.split('.', 1)
+                param_class = getattr(Parameters, class_name, None)
+                if param_class is None:
+                    raise ValueError(f"Unknown parameter: '{class_name}'")
+                    
+                out_dict[name] = getattr(param_class, attr_name, None)
+                if out_dict[name] is None:
+                    raise ValueError(f"Unknown parameter: '{name}'")
                 
-            out_dict[name] = getattr(param_class, attr_name, None)
-            if out_dict[name] is None:
-                raise ValueError(f"Unknown parameter: '{name}'")
-            
-        return out_dict 
+            return out_dict 
 
     @staticmethod
     def set_parameters(updates: dict):
@@ -127,17 +126,18 @@ class Parameters(ABC):
             'pt.betaWaitingTime_u_min': -0.04
           }
         """
-        for key, value in updates.items():
-            try:
-                class_name, attr_name = key.split('.', 1)
-            except ValueError:
-                raise ValueError(f"Invalid key format: '{key}', expected 'class_name.attribute_name'")
-            
-            param_class = getattr(Parameters, class_name, None)
-            if param_class is None:
-                raise ValueError(f"Unknown parameter group: '{class_name}'")
-            
-            if not hasattr(param_class, attr_name):
-                raise AttributeError(f"'{class_name}' has no attribute '{attr_name}'")
-            
-            setattr(param_class, attr_name, value)
+        if len(updates):
+            for key, value in updates.items():
+                try:
+                    class_name, attr_name = key.split('.', 1)
+                except ValueError:
+                    raise ValueError(f"Invalid key format: '{key}', expected 'class_name.attribute_name'")
+                
+                param_class = getattr(Parameters, class_name, None)
+                if param_class is None:
+                    raise ValueError(f"Unknown parameter group: '{class_name}'")
+                
+                if not hasattr(param_class, attr_name):
+                    raise AttributeError(f"'{class_name}' has no attribute '{attr_name}'")
+                
+                setattr(param_class, attr_name, value)

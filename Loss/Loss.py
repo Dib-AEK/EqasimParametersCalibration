@@ -37,19 +37,58 @@ class Loss:
     
     @property
     def estimated_mode_shares(self):
+        return self.get_estimated_mode_shares()
+    
+    def get_estimated_mode_shares(self, modes = None):
         """
         Computes mode shares from the tours.
         Returns:
             dict of estimated shares (same keys as actual)
         """
+        if modes == None:
+            modes = self.modes
+            
         tours = TourUtility.get_all_utilities()
         tours = Selector.get_mode_shares_from_tours(tours)
         
-        modes = tours.loc[tours.selected,"candidate_mode"].explode()
+        selected_modes = tours.loc[tours.selected,"candidate_mode"].explode()
         
-        counts = modes.value_counts(normalize=True)
-        estimated = {mode: counts.get(mode, 0.0) for mode in self.modes}
+        counts = selected_modes.value_counts(normalize=True)
+        estimated = {mode: counts.get(mode, 0.0) for mode in modes}
         return estimated
+    
+    @property
+    def actual_mode_shares(self):
+        return self.get_actual_mode_shares()
+    
+    def get_actual_mode_shares(self, modes = None):
+        """
+        Return the actual mode shares (The observed ones, used for calibration).
+        Returns:
+            dict of estimated shares (same keys as actual)
+        """
+        if modes == None:
+            modes = self.modes            
+        actual = {mode: self.actual.get(mode, 0.0) for mode in modes}
+        return actual
+    
+    @property
+    def eqasim_mode_shares(self):
+        return self.get_eqasim_mode_shares()
+    
+    def get_eqasim_mode_shares(self, modes = None):
+        """
+        Computes mode shares that are selected in eqasim (DMC) at that specific iteration.
+        Returns:
+            dict of estimated shares (same keys as actual)
+        """
+        if modes == None:
+            modes = self.modes            
+        
+        selected_modes = TourUtility.tours.loc[TourUtility.tours["eqasim_selected"], "candidate_mode"].explode()
+        counts         = selected_modes.value_counts(normalize=True)
+        actual         = {mode: counts.get(mode, 0.0) for mode in modes}
+        return actual
     
     def _get_loss(self):
         metric = self.metric.lower()

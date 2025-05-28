@@ -13,7 +13,7 @@ from Utilities.PtUtility import PtUtility
 from Utilities.WalkUtility import WalkUtility
 from Utilities.ZeroUtility import ZeroUtility
 import pandas as pd
-
+import numpy as np
 
 
 
@@ -29,9 +29,12 @@ class TourUtility(BaseUtility):
     # Shared class-level variables for dataframes
     variables_by_mode = {}
     tours = None
+    persons = []
+    num_persons = 0
+    sample = None
     
     @staticmethod
-    def init_data(car, pt, bike, walk, tours=None):
+    def init_data(car, pt, bike, walk, tours=None, population_sample = None):
         """
         Initializes mode-specific input data once.
         """
@@ -42,8 +45,17 @@ class TourUtility(BaseUtility):
             "walk": walk,
             "car_passenger":None
         }
+        
+        TourUtility.sample = population_sample
+        
         if tours is not None:
             TourUtility.tours = tours
+            TourUtility.persons = tours.person_id.unique()
+            TourUtility.num_persons = len(TourUtility.persons)
+      
+    @staticmethod
+    def set_population_sample(population_sample):
+        TourUtility.sample = population_sample
             
     @staticmethod
     def get_utility_of(person_id, trip_index, mode):
@@ -88,10 +100,12 @@ class TourUtility(BaseUtility):
             raise RuntimeError("Tours are not initialized.")
         
         tours = TourUtility.tours[['person_id', 'trips_index', 'selection_id', 'candidate_mode']].copy()
-        
+        if TourUtility.sample is not None and TourUtility.sample<TourUtility.num_persons:
+            sample_population = np.random.choice(TourUtility.persons, size=TourUtility.sample)
+            tours = tours[tours.person_id.isin(sample_population)].reset_index(drop=True)
         # Explode tours into individual trips
         exploded = tours.explode(['trips_index', 'candidate_mode'])
-        exploded['trip_key'] = (exploded['person_id'].astype(str) + '_' 
+        exploded['trip_key'] = (exploded['person_id'].astype(str) + '_'
                                 + exploded['trips_index'].astype(str))
         exploded['utility'] = 0.0  # Initialize utility
 
@@ -137,7 +151,7 @@ class TourUtility(BaseUtility):
         return df
     
     @staticmethod
-    def read_and_init(file_path, files:dict):
+    def read_and_init(file_path, files:dict, population_sample = None):
         tours = TourUtility.read_csv(file_path)
         
         bike = BikeUtility.read_csv(files["bike"])
@@ -145,7 +159,7 @@ class TourUtility(BaseUtility):
         pt   = PtUtility.read_csv(files["pt"])
         walk = WalkUtility.read_csv(files["walk"])        
     
-        TourUtility.init_data(car, pt, bike, walk, tours)
+        TourUtility.init_data(car, pt, bike, walk, tours, population_sample=population_sample)
     
 
 

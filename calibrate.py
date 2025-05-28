@@ -18,7 +18,8 @@ from Utilities.TourUtility import TourUtility
 from Utilities.BaseUtility import BaseUtility
 from Utilities.Selector import Selector
 from Utilities.Parameters import Parameters
-from Optimizer.Factory import get_optimizer
+from Optimizer.OptimizersFactory import get_optimizer
+from Optimizer.MomentumsFactory import create_momentum
 
 # Initiate the logger
 import logging
@@ -60,10 +61,19 @@ def parse_args() -> argparse.Namespace:
                         choices=["ga","pso", "random", "bayesian","tpe","cmaes","spsa","adam",
                                  'Nelder-Mead','Powell', 'CG',  'BFGS', 'Newton-CG','L-BFGS-B',
                                  'TNC', 'COBYLA','COBYQA','SLSQP','trust-constr','dogleg','trust-ncg',
-                                 'trust-exact','trust-krylov'],
+                                 'trust-exact','trust-krylov', "kai"],
                         help="Optimization algorithm to use")
     
-    parser.add_argument("--max_evals", type=int, default="100",                        
+    parser.add_argument("--momentum", type=str, default="ema",
+                        choices=["ema","adam"],
+                        help="Momentum")
+    
+    parser.add_argument("--beta-momentum", type=float, default=0.9, help="Momentum of the EMA")
+    
+    parser.add_argument("--max-evals", type=int, default=100,                        
+                        help="Maximum number of evaluation of the loss function")
+    
+    parser.add_argument("--population-sample", type=int, default=1000000,                        
                         help="Maximum number of evaluation of the loss function")
     return parser.parse_args()
 
@@ -85,11 +95,12 @@ def main():
 
     # Paths
     sim_path = args.variables_path
-    bike_file = f"{sim_path}/{args.iteration}.choice_variables_bike.csv"
-    pt_file = f"{sim_path}/{args.iteration}.choice_variables_pt.csv"
-    car_file = f"{sim_path}/{args.iteration}.choice_variables_car.csv"
-    walk_file = f"{sim_path}/{args.iteration}.choice_variables_walk.csv"
-    tours_file = f"{sim_path}/{args.iteration}.detailed_utilities.csv"
+    sim_iter = os.path.basename(sim_path).split('.')[-1]
+    bike_file = f"{sim_path}/{sim_iter}.choice_variables_bike.csv"
+    pt_file = f"{sim_path}/{sim_iter}.choice_variables_pt.csv"
+    car_file = f"{sim_path}/{sim_iter}.choice_variables_car.csv"
+    walk_file = f"{sim_path}/{sim_iter}.choice_variables_walk.csv"
+    tours_file = f"{sim_path}/{sim_iter}.detailed_utilities.csv"
 
     # Validate files exist
     for path in [bike_file, pt_file, car_file, walk_file, tours_file]:
@@ -101,16 +112,21 @@ def main():
     Selector.set_selector(args.selector)
 
     # Initialize utility data
-    TourUtility.read_and_init(tours_file, {
-        "car": car_file,
-        "pt": pt_file,
-        "bike": bike_file,
-        "walk": walk_file
-    })
+    TourUtility.read_and_init(tours_file, {"car": car_file,
+                                           "pt": pt_file,
+                                           "bike": bike_file,
+                                           "walk": walk_file }, 
+                              population_sample = args.population_sample)
 
-    # Setup loss function
-    myLoss = Loss(actual_mode_shares, metric=args.metric)
+    # Setup loss function 
+    myLoss = Loss(actual_mode_shares, metric=args.metric)    
 
+    # Set momuntum
+    momuntum = create_momentum(momentum_type = args.momentum, 
+                               momentum = args.beta_momentum)    
+    initial_parameters = Parameters.get_parameters(bounds.keys()).copy()
+    momuntum.set_initial_values(initial_parameters)
+    
     # Create optimizer
     optimizer = get_optimizer(
         method=args.optimizer,
@@ -126,7 +142,13 @@ def main():
     t1 = time.time()
     dt = t1 - t0
     logger.info(f"Optimization completed in {int(dt//60)}:{int(dt%60):02d}")
-
+    
+    # Update optimal values (applying momentum)    
+    optimal_parameters = Parameters.get_parameters(bounds.keys()).copy()
+    momuntum.set_optimal_values(optimal_parameters)
+    smoothed_optimal_values = momuntum.get_updated_values()
+    Parameters.set_parameters(smoothed_optimal_values)
+    
     # Save optimized parameters
     Parameters.to_yaml(args.output_parameters)
     logger.info(f"Optimized parameters saved to: {args.output_parameters}")

@@ -51,26 +51,55 @@ class Selector():
 
     @staticmethod
     def _multinomial_logit_selection(df):        
-        result = []
-
         if Selector.considerMinimumUtility:
             df = df[df['utility'] > Selector.minimum_utility]
+        
+        df.loc[:,'utility'] = np.minimum(df['utility'], Selector.maximum_utility)
+        
+        # Compute the probability
+        df.loc[:,"exp_util"] = np.exp(df['utility'])        
+        group_sum = df.groupby(['person_id', 'selection_id'])['exp_util'].transform('sum')
+        df.loc[:,'probability'] = df["exp_util"] / group_sum
+               
+        # Generate a random number per row
+        df.loc[:,'rand'] = np.random.rand(len(df))
+        df.loc[:,'rand'] = df.groupby(['person_id', 'selection_id'])['rand'].transform('first')
+        
+        # Compute cumulative probability within each group
+        df.loc[:,'cum_prob'] = df.groupby(['person_id', 'selection_id'])['probability'].cumsum()
+        
+        # Mark selected where rand < cum_prob and previous cum_prob <= rand
+        df.loc[:,'prev_cum_prob'] = df.groupby(['person_id', 'selection_id'])['cum_prob'].shift(fill_value=0)
+        df.loc[:,'selected'] = (df['rand'] >= df['prev_cum_prob']) & (df['rand'] < df['cum_prob'])
+        
+        # Clean up unnecessary columns
+        df.drop(columns=['exp_util', 'probability', 'rand', 'cum_prob', 'prev_cum_prob'], inplace=True)
 
+        return df
+    
+    @staticmethod
+    def _multinomial_logit_selection_not_efficient(df):        
+        result = []
+    
+        if Selector.considerMinimumUtility:
+            df = df[df['utility'] > Selector.minimum_utility]
+    
         # Group by person_id and selection_id
         grouped = df.groupby(['person_id', 'selection_id'], sort=False)
-
+    
         for name, group in grouped:
             utilities = np.minimum(group['utility'].values, Selector.maximum_utility)
             exp_utilities = np.exp(utilities)
             probabilities = exp_utilities / exp_utilities.sum()
-
+    
             chosen_index = np.random.choice(group.index, p=probabilities)
             selected = pd.Series(False, index=group.index)
             selected[chosen_index] = True
             result.append(group.assign(selected=selected.values))
-
-        return pd.concat(result)
     
+        return pd.concat(result)
+
+
     @staticmethod
     def set_selector(selector:str):
         Selector.selector = selector

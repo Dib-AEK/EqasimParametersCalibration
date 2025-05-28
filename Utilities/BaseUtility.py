@@ -13,14 +13,22 @@ from Utilities.Parameters import Parameters
 
 class MetaCls(ABCMeta):
     """
-    Metaclass that proxies unknown class-level attribute lookups to BaseUtility.parameters.
+    Metaclass that:
+    - For attributes containing certain prefixes, proxies to cls.parameters
+    - Otherwise, falls back to normal class-level lookup
     """
     def __getattr__(cls, name):
-        if ("walk" in name) or ("bike" in name) or ("cost" in name) or("pt" in name) or ("car" in name):
-            return getattr(cls.parameters, name)
-        else:
-            return getattr(cls, name)
-    
+        _prefixes = ["walk", "bike", "cost", "pt", "car", "swissBike", "swissCar"]
+        
+        if any(prefix in name for prefix in _prefixes):            
+            if hasattr(cls.parameters, name):
+                return getattr(cls.parameters, name)
+            else:
+                raise AttributeError(f"'{name}' not found in {cls.__name__}.parameters" )
+        try:
+            return object.__getattribute__(cls, name)
+        except AttributeError:
+            raise AttributeError( f"'{cls.__name__}' object has no attribute '{name}'" )
     
 class BaseUtility(ABC, metaclass=MetaCls):
     """

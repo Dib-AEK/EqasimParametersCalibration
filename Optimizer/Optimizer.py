@@ -38,6 +38,8 @@ class Optimizer(ABC):
         # Convert percentage bounds to absolute bounds
         self.lb = [self.initial_values[p] - bounds[p] for p in self.param_names]
         self.ub = [self.initial_values[p] + bounds[p] for p in self.param_names]
+        
+        
 
     @abstractmethod
     def optimize(self) -> Dict[str, Any]:
@@ -51,13 +53,23 @@ class Optimizer(ABC):
 
     def _objective(self, paramaters: list) -> float:
         """Objective function wrapper"""
-        param_dict = {name: val for name, val in zip(self.param_names, paramaters)}
-        BaseUtility.set_parameters(param_dict)
-        return self.objective_function.get_loss(param_dict)
+        param_dict = {name: val for name, val in zip(self.param_names, paramaters)}        
+        return self.objective_function.get_loss(param_dict, self.population_sample)
 
+    def get_actual_mode_shares(self, modes=None):
+        return self.objective_function.get_actual_mode_shares(modes)
 
-
-
+    def get_estimated_mode_shares(self, modes=None):
+        return self.objective_function.get_estimated_mode_shares(modes)
+    
+    def get_eqasim_mode_shares(self, modes=None):
+        return self.objective_function.get_eqasim_mode_shares(modes)
+    
+    def get_current_parameters(self, params):
+        if len(params):
+            return BaseUtility.get_parameters(params)
+        else:
+            return []
 
 
 
