@@ -23,7 +23,7 @@ class Selector():
     def get_mode_shares_from_tours(tours: pd.DataFrame):
         # Reduce to only relevant columns early
         utilities = tours[["person_id", "selection_id", "candidate_mode", "utility"]]
-
+        #TODO: I need to add SOBOL sequence based generator to see if it works better.
         if Selector.selector == "MultinomialLogit":
             return Selector._multinomial_logit_selection(utilities)
         elif Selector.selector == "Maximum":
