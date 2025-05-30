@@ -52,7 +52,10 @@ TourUtility.read_and_init(tours_file,
        
 # get and plot variance:
 modes = ["car", "car_passenger", "pt", "bike", "walk"]
-sample_sizes = [100, 500, 1000, 3000, 7000, 12000, 20000, 30000, None]
+sample_sizes = [3000, 7000, 10000, 15000, 20000, 30000, 38200]
+use_sobol = False
+TourUtility.use_sobol = use_sobol
+Selector.use_sobol = use_sobol
 
 
 # Function to compute statistics
@@ -91,6 +94,8 @@ for pop_sample in sample_sizes:
 fig, axes = plt.subplots(2, 3, figsize=(18, 10))
 axes = axes.flatten()
 
+ylim = {'car':[0.35,0.37], 'car_passenger':[0.08,0.095], 'pt':[0.16,0.173], 
+        'bike':[0.056,0.069], 'walk':[0.31,0.33]}
 for ax_idx, mode in enumerate(modes):
     ax = axes[ax_idx]
     mean_values = np.array(results[mode]['mean'])
@@ -111,6 +116,7 @@ for ax_idx, mode in enumerate(modes):
     ax.set_title(f"{mode.capitalize()} Mode Share")
     ax.set_xlabel("Population Sample Size")
     ax.set_ylabel("Mode Share")
+    ax.set_ylim(ylim[mode])
     ax.grid(True)
     ax.legend()
 

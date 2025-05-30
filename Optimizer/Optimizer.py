@@ -54,7 +54,7 @@ class Optimizer(ABC):
     def _objective(self, paramaters: list) -> float:
         """Objective function wrapper"""
         param_dict = {name: val for name, val in zip(self.param_names, paramaters)}        
-        return self.objective_function.get_loss(param_dict, self.population_sample)
+        return self.objective_function.get_loss(param_dict)
 
     def get_actual_mode_shares(self, modes=None):
         return self.objective_function.get_actual_mode_shares(modes)

@@ -72,7 +72,7 @@ def parse_args() -> argparse.Namespace:
     
     parser.add_argument("--beta-momentum", type=float, default=0.8, help="Momentum of the EMA")
     
-    parser.add_argument("--max-evals", type=int, default=100,                        
+    parser.add_argument("--max-evals", type=int, default=200,                        
                         help="Maximum number of evaluation of the loss function")
     
     parser.add_argument("--population-sample", type=int, default=1000000,                        

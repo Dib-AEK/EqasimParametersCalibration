@@ -102,8 +102,12 @@ class CMAESOptimizer(Optimizer):
 
         x0 = [v for k,v in self.initial_values.items()]
         sigma = (self.ub[0] - self.lb[0]) / 6
-
-        es = cma.CMAEvolutionStrategy(x0, sigma, {'maxfevals': self.max_evals})
+        
+        options = cma.CMAOptions()
+        options.set("bounds", [self.lb, self.ub])
+        options.set("maxfevals", self.max_evals)
+        
+        es = cma.CMAEvolutionStrategy(x0, sigma, options)
         while not es.stop():
             solutions = es.ask()
             solutions = [np.clip(s,self.lb, self.ub) for s in solutions] #Enforce Respect of ub and lb
@@ -199,7 +203,7 @@ class GAOptimizer(Optimizer):
         stats.register("min", np.min)
 
         algorithms.eaSimple(pop, toolbox, cxpb=0.5, mutpb=0.1,
-                            ngen=self.max_evals // 10,
+                            ngen=self.max_evals // 20,
                             stats=stats, halloffame=hof, verbose=False)
 
         return {"params": dict(zip(self.param_names, hof[0])), "loss": hof[0].fitness.values[0]}

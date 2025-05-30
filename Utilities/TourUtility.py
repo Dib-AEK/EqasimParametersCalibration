@@ -14,7 +14,7 @@ from Utilities.WalkUtility import WalkUtility
 from Utilities.ZeroUtility import ZeroUtility
 import pandas as pd
 import numpy as np
-
+from scipy.stats import qmc
 
 
 class TourUtility(BaseUtility):
@@ -32,6 +32,8 @@ class TourUtility(BaseUtility):
     persons = []
     num_persons = 0
     sample = None
+    sobol_generator = qmc.Sobol(d=1, scramble=True)
+    use_sobol = False
     
     @staticmethod
     def init_data(car, pt, bike, walk, tours=None, population_sample = None):
@@ -95,14 +97,30 @@ class TourUtility(BaseUtility):
         return tours[["person_id", "selection_id", "trips_index", "candidate_mode", "utility"]]
     
     @staticmethod
+    def get_population_sample():
+        if TourUtility.use_sobol:
+            samples = TourUtility.sobol_generator.random(TourUtility.sample)
+            indices = np.floor(samples.flatten() * TourUtility.num_persons).astype(int)
+            unique_indices = np.unique(indices)             
+            sample_population = TourUtility.persons[unique_indices]
+        else:
+            sample_population = np.random.choice(TourUtility.persons, size=TourUtility.sample)  
+        
+        return sample_population
+    
+    @staticmethod
     def get_all_utilities():
         if TourUtility.tours is None:
             raise RuntimeError("Tours are not initialized.")
         
         tours = TourUtility.tours[['person_id', 'trips_index', 'selection_id', 'candidate_mode']].copy()
-        if TourUtility.sample is not None and TourUtility.sample<TourUtility.num_persons:
-            sample_population = np.random.choice(TourUtility.persons, size=TourUtility.sample)
+        
+        # Only select a sample
+        if TourUtility.sample is not None and TourUtility.sample<TourUtility.num_persons:            
+            sample_population = TourUtility.get_population_sample()
             tours = tours[tours.person_id.isin(sample_population)].reset_index(drop=True)
+        
+        
         # Explode tours into individual trips
         exploded = tours.explode(['trips_index', 'candidate_mode'])
         exploded['trip_key'] = (exploded['person_id'].astype(str) + '_'
@@ -149,6 +167,7 @@ class TourUtility(BaseUtility):
                                 "utility":"eqasim_utility",
                                 "selected":"eqasim_selected"})
         return df
+    
     
     @staticmethod
     def read_and_init(file_path, files:dict, population_sample = None):
