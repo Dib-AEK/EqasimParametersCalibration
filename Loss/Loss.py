@@ -15,19 +15,32 @@ from scipy.spatial.distance import jensenshannon
 from Utilities.TourUtility import TourUtility
 from Utilities.Selector import Selector
 from Utilities.BaseUtility import BaseUtility
-
+from modeShares.modeShares import ModeShares
 
 class Loss:
     
-    def __init__(self, actual_mode_shares: dict, metric = "mse"):
+    def __init__(self, mode_shares_provider: ModeShares,
+                       metric = "js", 
+                       calibrate_global_modeshare:bool=True, 
+                       calibrate_modeshare_distribution:bool=False):
         """
         Parameters:
         - tours: pd.DataFrame with a 'chosen_mode' column (representing selected transport modes)
         - actual_mode_shares: dict, e.g. {'car': 0.4, 'pt': 0.3, 'walk': 0.2, 'bike': 0.1}
+        - mode_shares_distribution: dict,similar to actual_mode_shares but with a list 
+        for each mode and an extra key (distance)
         """        
-        self.actual = actual_mode_shares
-        self.modes = sorted(actual_mode_shares.keys())   
+        self.actual_global_mode_shares = mode_shares_provider.get_mode_shares()
+        self.actual_mode_shares_distribution = mode_shares_provider.get_mode_shares_distribution()
+        self.distance_bins = mode_shares_provider.get_distance_bins()
+        self.distance_labels = mode_shares_provider.get_distance_labels()
+        
+        self.calibrate_global_modeshare = calibrate_global_modeshare
+        self.calibrate_modeshare_distribution = calibrate_modeshare_distribution
         self.metric = metric
+        
+        self.modes = ["car","walk","bike","pt","car_passenger"]         
+        self.calibration_modes = ["car","pt","bike","walk"]
         
     def get_loss(self, parameters=None):
         if parameters is not None:
@@ -49,13 +62,32 @@ class Loss:
             modes = self.modes
             
         tours = TourUtility.get_all_utilities()
-        tours = Selector.get_mode_shares_from_tours(tours)
+        tours = Selector.select(tours)
         
-        selected_modes = tours.loc[tours.selected,"candidate_mode"].explode()
+        cols = ["candidate_mode", "euclidean_distance"] 
+        selected_modes = tours.loc[tours.selected, cols].explode(column = cols)
+        selected_modes = selected_modes[selected_modes.euclidean_distance>1e-3] #same selection as in modeShares
         
-        counts = selected_modes.value_counts(normalize=True)
-        estimated = {mode: counts.get(mode, 0.0) for mode in modes}
-        return estimated
+        estimates_global_mode_share = dict()
+        estimates_mode_share_distribution = dict()
+        if self.calibrate_global_modeshare:
+            counts = selected_modes["candidate_mode"].value_counts(normalize=True)
+            estimates_global_mode_share = {mode: counts.get(mode, 0.0) for mode in modes}
+        
+        if self.calibrate_modeshare_distribution:
+            distance_bins = np.array(self.distance_bins)*1e-3 #convert to km
+            bin_labels    =  self.distance_labels
+            selected_modes['distance_bin'] = pd.cut(selected_modes['euclidean_distance'],
+                                                    bins=distance_bins,
+                                                    labels=bin_labels, 
+                                                    include_lowest=True, 
+                                                    ordered=True)
+            grouped = selected_modes.groupby(['distance_bin', 'candidate_mode'], observed=False).size().unstack(fill_value=0)
+            mode_shares_by_bin = grouped.div(grouped.sum(axis=1), axis=0).fillna(0)
+            estimates_mode_share_distribution = {mode: mode_shares_by_bin[mode].tolist()
+                                                 for mode in modes}
+                
+        return estimates_global_mode_share, estimates_mode_share_distribution
     
     @property
     def actual_mode_shares(self):
@@ -69,8 +101,9 @@ class Loss:
         """
         if modes == None:
             modes = self.modes            
-        actual = {mode: self.actual.get(mode, 0.0) for mode in modes}
-        return actual
+        actual = {mode: self.actual_global_mode_shares.get(mode, 0.0) for mode in modes}        
+        actual_distribution = {mode: self.actual_mode_shares_distribution.get(mode, 0.0) for mode in modes}
+        return actual, actual_distribution
     
     @property
     def eqasim_mode_shares(self):
@@ -84,15 +117,62 @@ class Loss:
         """
         if modes == None:
             modes = self.modes            
+        cols = ["candidate_mode","euclidean_distance"] 
+        selected_modes = TourUtility.tours.loc[TourUtility.tours["eqasim_selected"], cols].explode()
+        selected_modes = selected_modes[selected_modes.euclidean_distance>1e-3] #same selection as in modeShares
         
-        selected_modes = TourUtility.tours.loc[TourUtility.tours["eqasim_selected"], "candidate_mode"].explode()
-        counts         = selected_modes.value_counts(normalize=True)
-        actual         = {mode: counts.get(mode, 0.0) for mode in modes}
-        return actual
+        eqasim_global_mode_share = dict()        
+        eqasim_mode_share_distribution = dict()
+        if self.calibrate_global_modeshare:
+            counts = selected_modes["candidate_mode"].value_counts(normalize=True)
+            eqasim_global_mode_share = {mode: counts.get(mode, 0.0) for mode in modes}
+            
+        if self.calibrate_modeshare_distribution:
+            distance_bins = self.actual_mode_shares_distribution["distance"]
+            bin_labels = [f"{distance_bins[i]}-{distance_bins[i+1]}" for i in range(len(distance_bins)-1)]
+            selected_modes['distance_bin'] = pd.cut(selected_modes['euclidean_distance'],
+                                                    bins=distance_bins,
+                                                    labels=bin_labels,
+                                                    include_lowest=True,
+                                                    right=True)
+            grouped = selected_modes.groupby(['distance_bin', 'candidate_mode'], observed=False).size().unstack(fill_value=0)
+            mode_shares_by_bin = grouped.div(grouped.sum(axis=1), axis=0).fillna(0)
+            eqasim_mode_share_distribution = {mode: mode_shares_by_bin[mode].tolist()
+                                                 for mode in modes}
+        
+        return eqasim_global_mode_share, eqasim_mode_share_distribution
     
     def _get_loss(self):
         metric = self.metric.lower()
+        func = self.get_loss_func(metric)
+        actual, est, actual_dist, est_dist = self._vectors()
+        loss = 0
+        if self.calibrate_global_modeshare:
+            loss += func(actual, est)
+        if self.calibrate_modeshare_distribution:
+            loss += func(actual_dist, est_dist)
+        return loss
+
+    def _vectors(self):
+        """
+        Returns actual and estimated mode shares as aligned numpy arrays.
+        """
+        est,dist = self.estimated_mode_shares
+        actual,actual_dist = self.actual_mode_shares
+        calibration_modes = self.calibration_modes
+                
+        est_vec, est_dist_vec, actual_vec, actual_dist_vec = None, None, None, None
+        if self.calibrate_global_modeshare:
+            actual_vec = np.array([actual[mode] for mode in calibration_modes])            
+            est_vec = np.array([est[mode] for mode in calibration_modes])            
         
+        if self.calibrate_modeshare_distribution:            
+            actual_dist_vec = np.array([actual_dist[mode] for mode in calibration_modes]).flatten()
+            est_dist_vec = np.array([dist[mode] for mode in calibration_modes]).flatten()
+        
+        return actual_vec, est_vec, actual_dist_vec, est_dist_vec
+    
+    def get_loss_func(self, metric):
         if metric == "mse":
             return self.mse()
         elif metric == "mae":
@@ -110,43 +190,26 @@ class Loss:
         else:
             raise ValueError(f"Unknown loss metric: '{self.metric}'")
     
-
-    def _vectors(self):
-        """
-        Returns actual and estimated mode shares as aligned numpy arrays.
-        """
-        est = self.estimated_mode_shares
-        actual_vec = np.array([self.actual[mode] for mode in self.modes])
-        est_vec = np.array([est[mode] for mode in self.modes])
-        return actual_vec, est_vec
-
-    def mse(self):
-        actual, est = self._vectors()
-        return mean_squared_error(actual, est)
+    def mse(self):        
+        return mean_squared_error
 
     def mae(self):
-        actual, est = self._vectors()
-        return mean_absolute_error(actual, est)
+        return mean_absolute_error
 
     def cosine_similarity(self):
-        actual, est = self._vectors()
-        return cosine_similarity([actual], [est])[0, 0]
-    
+        return lambda x,y: cosine_similarity([x], [y])[0, 0]
+        
     def kl_divergence(self):
-        actual, est = self._vectors()
-        return np.sum(rel_entr(actual, est + 1e-12)) 
+        return lambda x,y: np.sum(rel_entr(x, y + 1e-12))  
     
     def js_divergence(self):
-        actual, est = self._vectors()
-        return jensenshannon(actual, est, base=2)
+        return jensenshannon
     
     def hellinger_distance(self):
-        actual, est = self._vectors()
-        return np.sqrt(np.sum((np.sqrt(actual) - np.sqrt(est)) ** 2)) / np.sqrt(2)
+        return  lambda x,y: np.sqrt(np.sum((np.sqrt(x) - np.sqrt(y)) ** 2)) / np.sqrt(2)
     
     def total_variation_distance(self):
-        actual, est = self._vectors()
-        return 0.5 * np.sum(np.abs(actual - est))
+        return lambda x,y: np.sum(np.abs(x - y))
 
     def summary(self):
         return {

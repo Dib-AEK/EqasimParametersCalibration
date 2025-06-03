@@ -8,12 +8,13 @@ Created on Thu May 22 10:12:48 2025
 
 from Utilities.BaseUtility import BaseUtility
 import pandas as pd
+import numpy as np
 
 class ZeroUtility(BaseUtility):
     
     @staticmethod
     def compute(variables):
-        return 0.0
+        return variables["euclideanDistance_km"]*0.0 #just to make it same ttype
     
     def read_csv(file_path):
         df = pd.read_csv(file_path, sep=";")

@@ -25,18 +25,15 @@ class Selector():
     use_sobol = False
     
     @staticmethod
-    def get_mode_shares_from_tours(tours: pd.DataFrame):
-        # Reduce to only relevant columns early
-        utilities = tours[["person_id", "selection_id", "candidate_mode", "utility"]]
-        #TODO: I need to add SOBOL sequence based generator to see if it works better.
+    def select(tours: pd.DataFrame):                        
         if Selector.selector == "MultinomialLogit":
             if Selector.use_sobol:
-                return Selector._multinomial_logit_selection_sobol(utilities)
+                return Selector._multinomial_logit_selection_sobol(tours)
             else:
-                return Selector._multinomial_logit_selection(utilities)
+                return Selector._multinomial_logit_selection(tours)
             
         elif Selector.selector == "Maximum":
-            return Selector._maximum_utility_selection(utilities)
+            return Selector._maximum_utility_selection(tours)
         else:
             raise ValueError(f"Unknown selector: {Selector.selector}")
 

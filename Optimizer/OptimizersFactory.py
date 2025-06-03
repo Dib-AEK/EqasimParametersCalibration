@@ -100,7 +100,7 @@ class CMAESOptimizer(Optimizer):
 
         logger.info("Running CMA-ES Optimization...")
 
-        x0 = [v for k,v in self.initial_values.items()]
+        x0 = np.array([v for k,v in self.initial_values.items()])
         sigma = (self.ub[0] - self.lb[0]) / 6
         
         options = cma.CMAOptions()
@@ -108,11 +108,15 @@ class CMAESOptimizer(Optimizer):
         options.set("maxfevals", self.max_evals)
         
         es = cma.CMAEvolutionStrategy(x0, sigma, options)
+        iteration = 0
         while not es.stop():
             solutions = es.ask()
-            solutions = [np.clip(s,self.lb, self.ub) for s in solutions] #Enforce Respect of ub and lb
+            if iteration==0:
+                solutions.append(x0) #inform it of the initial solution
+                
             es.tell(solutions, [self._objective(sol) for sol in solutions])
             es.disp()
+            iteration +=1
 
         return {"params": dict(zip(self.param_names, es.result.xbest)), "loss": es.result.fbest}
 
@@ -309,7 +313,7 @@ class KaiOptimizer(Optimizer):
         logger.info("Using Kai utility formula...")
 
         modes = ["pt", "car", "walk", "bike"]
-        actual_mode_shares = self.get_actual_mode_shares(modes)
+        actual_mode_shares,_ = self.get_actual_mode_shares(modes)
         
         max_iter = 10  # Max iterations to avoid expensive runs
         tol = 5e-3     # Tolerance for convergence
@@ -320,9 +324,9 @@ class KaiOptimizer(Optimizer):
         for i in range(max_iter):
             # Simulate only once per iteration
             if i==0:
-                simulated_mode_shares = self.get_eqasim_mode_shares(modes) # less expensive, and available for first iteration
+                simulated_mode_shares,_ = self.get_eqasim_mode_shares(modes) # less expensive, and available for first iteration
             else:
-                simulated_mode_shares = self.get_estimated_mode_shares(modes)            
+                simulated_mode_shares,_ = self.get_estimated_mode_shares(modes)            
             
             # Check convergence by comparing with previous mode shares
             if prev_mode_shares is not None:

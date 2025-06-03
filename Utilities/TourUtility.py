@@ -36,7 +36,7 @@ class TourUtility(BaseUtility):
     use_sobol = False
     
     @staticmethod
-    def init_data(car, pt, bike, walk, tours=None, population_sample = None):
+    def init_data(car, pt, bike, walk, cp, tours=None, population_sample = None):
         """
         Initializes mode-specific input data once.
         """
@@ -45,7 +45,7 @@ class TourUtility(BaseUtility):
             "pt": pt,
             "bike": bike,
             "walk": walk,
-            "car_passenger":None
+            "car_passenger":cp
         }
         
         TourUtility.sample = population_sample
@@ -54,6 +54,8 @@ class TourUtility(BaseUtility):
             TourUtility.tours = tours
             TourUtility.persons = tours.person_id.unique()
             TourUtility.num_persons = len(TourUtility.persons)
+            # Here we include Euclidean distance in the tours dataframe in order to get mode shares distribution
+            TourUtility.create_distance_column_in_tours()
       
     @staticmethod
     def set_population_sample(population_sample):
@@ -113,7 +115,11 @@ class TourUtility(BaseUtility):
         if TourUtility.tours is None:
             raise RuntimeError("Tours are not initialized.")
         
-        tours = TourUtility.tours[['person_id', 'trips_index', 'selection_id', 'candidate_mode']].copy()
+        cols = ['person_id', 'trips_index', 'selection_id', 'candidate_mode']
+        if "euclidean_distance" in TourUtility.tours.columns:
+            cols.append("euclidean_distance")
+        
+        tours = TourUtility.tours[cols].copy()
         
         # Only select a sample
         if TourUtility.sample is not None and TourUtility.sample<TourUtility.num_persons:            
@@ -130,7 +136,7 @@ class TourUtility(BaseUtility):
         # Process each mode's trips in a vectorized manner
         for mode, estimator in TourUtility.utility_estimators.items():
             if mode == 'car_passenger':
-                continue  # Already initialized to 0
+                continue  # Already initialized to 0, but need to be remove if we change the utility estimator
             
             variables_df = TourUtility.variables_by_mode.get(mode)
             if variables_df is None:
@@ -154,7 +160,7 @@ class TourUtility(BaseUtility):
         
         # Sum utilities by original tour index
         tours['utility'] = exploded.groupby(level=0)['utility'].sum()
-        return tours[["person_id", "selection_id", "trips_index", "candidate_mode", "utility"]]
+        return tours[[*cols, "utility"]]
 
 
     @staticmethod
@@ -168,7 +174,33 @@ class TourUtility(BaseUtility):
                                 "selected":"eqasim_selected"})
         return df
     
+    @staticmethod
+    def create_distance_column_in_tours():
+        tours = TourUtility.tours[['person_id', 'selection_id', 'trips_index', 'candidate_mode']].copy()
+        
+        # Explode tours into individual trips
+        exploded = tours.explode(['trips_index', 'candidate_mode'])
+        exploded['trip_key'] = (exploded['person_id'].astype(str) + '_'
+                                + exploded['trips_index'].astype(str))
+        exploded['euclidean_distance'] = np.nan
     
+        for mode in ["car","pt","walk","bike","car_passenger"]:            
+            variables_df = TourUtility.variables_by_mode.get(mode)
+            if variables_df is None:
+                raise RuntimeError(f"Missing variables dataframe for mode {mode}.")
+            
+            mask = exploded['candidate_mode'] == mode
+            
+            try:                
+                distances = variables_df.reindex(exploded.loc[mask,'trip_key'])["euclideanDistance_km"].values
+                exploded.loc[mask, 'euclidean_distance'] = distances
+            except KeyError:
+                raise RuntimeError(f"Missing keys for mode {mode}.")                            
+        
+        tours['euclidean_distance'] = exploded.groupby(level=0)['euclidean_distance'].agg(list)
+        TourUtility.tours['euclidean_distance']  = tours['euclidean_distance'] 
+        
+                
     @staticmethod
     def read_and_init(file_path, files:dict, population_sample = None):
         tours = TourUtility.read_csv(file_path)
@@ -176,10 +208,10 @@ class TourUtility(BaseUtility):
         bike = BikeUtility.read_csv(files["bike"])
         car  = CarUtility.read_csv(files["car"])
         pt   = PtUtility.read_csv(files["pt"])
-        walk = WalkUtility.read_csv(files["walk"])        
-    
-        TourUtility.init_data(car, pt, bike, walk, tours, population_sample=population_sample)
-    
+        walk = WalkUtility.read_csv(files["walk"])                                
+        cp   = ZeroUtility.read_csv(files["car_passenger"]) 
+        
+        TourUtility.init_data(car, pt, bike, walk, cp, tours, population_sample=population_sample)
 
 
 
