@@ -41,8 +41,9 @@ class ModeShares:
             self._setup_files()
             self.trips = self._load_data()
             self.mode_shares = self._get_mode_shares()
-            self.distance_labels = ['0km-1km', '1km-3km', '3km-5km', '5km-8km', '8km-10km', '10km-20km', '20km+']
-            self.distance_bins = [0, 1000, 3000, 5000, 8000, 10000, 20000, 1000000]
+            self.distance_labels = ['0km-1km', '1km-2km', '2km-3km', '3km-5km', '5km-7km',
+                                    '7km-9km', '9km-15km', '15km-20km', '20km+']
+            self.distance_bins = [0, 1000, 2000, 3000, 5000, 7000, 9000, 15000, 20000, 1000000]
             self.mode_shares_distribution = self._get_mode_shares_distribution()
             self.mode_shares_by_canton = self._get_mode_shares_by_canton()
             self.save_to_cache()

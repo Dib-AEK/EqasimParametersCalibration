@@ -27,7 +27,7 @@ class PopulationFactor:
 
     @classmethod
     def get_population(cls, iteration=None, maximum_iteration=100, method='linear', **kwargs):
-        if iteration is None:
+        if iteration is None or PopulationFactor._population<=PopulationFactor._minimum_population:
             return cls._population
         
         if method == 'linear':
@@ -51,7 +51,7 @@ class PopulationFactor:
     @classmethod
     def _linear(cls, iteration, maximum_iteration):
         alpha = min(iteration / maximum_iteration, 1)
-        delta = cls._population - cls._minimum_population
+        delta = max(cls._population - cls._minimum_population, 0)
         return int(cls._minimum_population + delta * alpha)
 
     @classmethod
@@ -94,7 +94,7 @@ class PopulationFactor:
         return int(pop)
 
     @classmethod
-    def _step(cls, iteration, maximum_iteration, steps=5):
+    def _step(cls, iteration, maximum_iteration, steps=10):
         step_size = max(1, maximum_iteration // steps)
         level = min(iteration // step_size, steps - 1)
         delta = cls._population - cls._minimum_population

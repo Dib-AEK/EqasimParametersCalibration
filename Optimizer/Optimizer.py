@@ -18,7 +18,7 @@ from functools import partial
 
 
 class Optimizer(ABC):
-    def __init__(self, objective_function: Loss, bounds: Dict[str, float], max_evals: int):
+    def __init__(self, args, objective_function: Loss):
         """
         Base class for all optimizers.
 
@@ -28,16 +28,16 @@ class Optimizer(ABC):
         - max_evals: Maximum number of function evaluations.
         """
         self.objective_function = objective_function
-        self.bounds = bounds
-        self.max_evals = max_evals
-
+        self.bounds = args.bounds
+        self.max_evals = args.max_evals
+        self.args = args
+        
         # Get initial values from BaseUtility
-        self.param_names = list(bounds.keys())
-        self.initial_values = BaseUtility.get_parameters(self.param_names)
-
+        self.param_names = list(self.bounds.keys())
+        self.initial_values = BaseUtility.get_parameters(self.param_names)        
         # Convert percentage bounds to absolute bounds
-        self.lb = [self.initial_values[p] - bounds[p] for p in self.param_names]
-        self.ub = [self.initial_values[p] + bounds[p] for p in self.param_names]
+        self.lb = [self.initial_values[p] - self.bounds[p] for p in self.param_names]
+        self.ub = [self.initial_values[p] + self.bounds[p] for p in self.param_names]
         
         
 

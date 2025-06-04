@@ -31,10 +31,11 @@ def register_optimizer(name):
         return cls
     return decorator
 
-def get_optimizer(method: str, *args, **kwargs) -> Optimizer:
+def get_optimizer(parsed_args, *args, **kwargs) -> Optimizer:
+    method=parsed_args.optimizer
     if method.lower() not in _optimizer_registry:
         raise ValueError(f"Unsupported optimizer: {method}. Supported: {_optimizer_registry.keys()}")
-    return _optimizer_registry[method.lower()](*args, **kwargs)
+    return _optimizer_registry[method.lower()](parsed_args, *args, **kwargs)
 
 
 
@@ -99,27 +100,38 @@ class CMAESOptimizer(Optimizer):
         import cma
 
         logger.info("Running CMA-ES Optimization...")
-
+        
+        # Convert bounds to arrays and define scaling functions
+        lb, ub = np.array(self.lb), np.array(self.ub)
+        def scaler(x):
+            return (x - lb) / (ub - lb)
+        def back_scaler(x):
+            return x * (ub - lb) + lb
+    
         x0 = np.array([v for k,v in self.initial_values.items()])
-        sigma = (self.ub[0] - self.lb[0]) / 6
+        x0_scaled = scaler(x0)
+        
+        sigma = 1 / 3 
         
         options = cma.CMAOptions()
-        options.set("bounds", [self.lb, self.ub])
+        options.set("bounds", [np.zeros_like(lb), np.ones_like(lb)])
         options.set("maxfevals", self.max_evals)
         
-        es = cma.CMAEvolutionStrategy(x0, sigma, options)
+        es = cma.CMAEvolutionStrategy(x0_scaled, sigma, options)
         iteration = 0
         while not es.stop():
             solutions = es.ask()
             if iteration==0:
-                solutions.append(x0) #inform it of the initial solution
-                
-            es.tell(solutions, [self._objective(sol) for sol in solutions])
+                solutions.append(x0_scaled) #inform it of the initial solution
+            objectives = [self._objective(back_scaler(sol)) for sol in solutions]            
+            es.tell(solutions, objectives)
             es.disp()
             iteration +=1
-
-        return {"params": dict(zip(self.param_names, es.result.xbest)), "loss": es.result.fbest}
-
+        
+        xbest = back_scaler(es.result.xbest)
+        
+        return {"params": dict(zip(self.param_names, xbest)), "loss": es.result.fbest}
+    
 
 @register_optimizer("scipy")
 class ScipyOptimizer(Optimizer):
@@ -315,6 +327,9 @@ class KaiOptimizer(Optimizer):
         modes = ["pt", "car", "walk", "bike"]
         actual_mode_shares,_ = self.get_actual_mode_shares(modes)
         
+        reference_mode = self.get_reference_mode()
+        logger.info(f"[DEBUG]: The reference mode used in Kai optimizer is: {reference_mode}")
+        
         max_iter = 10  # Max iterations to avoid expensive runs
         tol = 5e-3     # Tolerance for convergence
         prev_mode_shares = None
@@ -342,7 +357,8 @@ class KaiOptimizer(Optimizer):
             # Update parameters using current simulated mode shares
             optimal_params = self._one_iteration(simulated_mode_shares=simulated_mode_shares,
                                                  actual_mode_shares = actual_mode_shares,
-                                                 iteration = i)
+                                                 iteration = i,
+                                                 reference_mode = reference_mode)
             BaseUtility.set_parameters(optimal_params)
             
             if break_at_end:
@@ -350,18 +366,21 @@ class KaiOptimizer(Optimizer):
 
         return {"params": optimal_params, "loss": diff}
 
-    def _one_iteration(self, simulated_mode_shares, actual_mode_shares, iteration, beta = 0.8):
-        modes = ["pt", "car", "walk", "bike"]
-        params = [f"{mode}.alpha_u" for mode in modes]
+    def _one_iteration(self, simulated_mode_shares, actual_mode_shares, iteration, beta = 0.8, reference_mode = "pt"):
+        all_modes = ["pt", "car", "walk", "bike"]
+        calibrated_modes = ["pt", "car", "walk", "bike"]        
+        calibrated_modes.remove(reference_mode)
+        
+        params = [f"{mode}.alpha_u" for mode in calibrated_modes]
         
         initial_parameters_values = self.get_current_parameters(params)
 
-        z0 = actual_mode_shares["pt"]  # Reference (e.g., pt)
-        m0 = simulated_mode_shares["pt"]  # Simulated reference share
+        z0 = actual_mode_shares[reference_mode]  # Reference (e.g., pt)
+        m0 = simulated_mode_shares[reference_mode]  # Simulated reference share
 
-        zi = np.array([actual_mode_shares[i] for i in modes[1:]])  # Others: car, walk, bike
-        mi = np.array([simulated_mode_shares[i] for i in modes[1:]])
-        asci = np.array([initial_parameters_values[i] for i in params[1:]])
+        zi = np.array([actual_mode_shares[i] for i in calibrated_modes])  # Others: car, walk, bike
+        mi = np.array([simulated_mode_shares[i] for i in calibrated_modes])
+        asci = np.array([initial_parameters_values[i] for i in params])
 
         # Update parameters using Kai's formula
         new_parameters_values = (
@@ -372,11 +391,16 @@ class KaiOptimizer(Optimizer):
         
         beta = min(beta, 1-1/(0.5*iteration+1))
         new_parameters_values = beta*asci+(1-beta)*new_parameters_values        
-        return dict(zip(params[1:], new_parameters_values.tolist()))
+        return dict(zip(params, new_parameters_values.tolist()))
 
 
-
-
-
+    def get_reference_mode(self):
+        all_modes = ["pt", "car", "walk", "bike"]
+        params = [f"{mode}.alpha_u" for mode in all_modes]
+        # reference mode is supposed to be the mode not present in the bounds
+        keys = self.bounds.keys()
+        reference_mode = list(set(params)-set(keys))[0].split('.')[0]
+        assert reference_mode in all_modes, "Couldn't find the reference mode in Kai optimizer."
+        return reference_mode
 
 

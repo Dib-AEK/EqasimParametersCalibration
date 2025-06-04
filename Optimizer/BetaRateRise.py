@@ -9,12 +9,18 @@ import numpy as np
 
 class BetaRateRise:
     _initial_beta = 0.8  # Default starting beta 
+    _do_not_rise = False
     
     @classmethod
     def set_beta(cls, beta):
         """Sets the initial beta value."""
         cls._initial_beta = beta
-
+     
+    @classmethod
+    def do_not_raise(cls, do_not_raise = True):
+        """Sets the initial beta value."""
+        cls._do_not_rise = do_not_raise
+    
     @classmethod
     def get_beta(cls, iteration=None, method='step', **kwargs):
         """
@@ -28,7 +34,7 @@ class BetaRateRise:
         Returns:
             float: Rising beta value for EMA at this iteration.
         """
-        if iteration is None or method == 'constant':
+        if iteration is None or method == 'constant' or BetaRateRise._do_not_rise:
             return cls._initial_beta
         
         if method == 'step':
@@ -51,7 +57,7 @@ class BetaRateRise:
 
     # --- Rise Strategies ---
     @classmethod
-    def _step_rise(cls, iteration, drop_interval=30):
+    def _step_rise(cls, iteration, drop_interval=20):
         """Beta decreases step-wise every N iterations."""
         d = np.floor(iteration / drop_interval) + 1
         return 1 - (1 - cls._initial_beta) / d

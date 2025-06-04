@@ -115,10 +115,7 @@ class TourUtility(BaseUtility):
         if TourUtility.tours is None:
             raise RuntimeError("Tours are not initialized.")
         
-        cols = ['person_id', 'trips_index', 'selection_id', 'candidate_mode']
-        if "euclidean_distance" in TourUtility.tours.columns:
-            cols.append("euclidean_distance")
-        
+        cols = ['person_id', 'trips_index', 'selection_id', 'candidate_mode','euclidean_distance']
         tours = TourUtility.tours[cols].copy()
         
         # Only select a sample
@@ -128,7 +125,7 @@ class TourUtility(BaseUtility):
         
         
         # Explode tours into individual trips
-        exploded = tours.explode(['trips_index', 'candidate_mode'])
+        exploded = tours[['person_id','trips_index','candidate_mode']].explode(['trips_index', 'candidate_mode'])
         exploded['trip_key'] = (exploded['person_id'].astype(str) + '_'
                                 + exploded['trips_index'].astype(str))
         exploded['utility'] = 0.0  # Initialize utility
@@ -143,13 +140,11 @@ class TourUtility(BaseUtility):
                 raise RuntimeError(f"Missing variables dataframe for mode {mode}.")
             
             mask = exploded['candidate_mode'] == mode
-            mode_trips = exploded.loc[mask]
-            if mode_trips.empty:
+            if mask.sum()==0:
                 continue
             
             try:
-                # Align variables with mode_trips via index
-                mode_vars = variables_df.reindex(mode_trips['trip_key'])
+                mode_vars = variables_df.reindex(exploded.loc[mask,'trip_key'])
             except KeyError:
                 raise RuntimeError(f"Missing keys for mode {mode}.")
             

@@ -118,7 +118,7 @@ class Loss:
         if modes == None:
             modes = self.modes            
         cols = ["candidate_mode","euclidean_distance"] 
-        selected_modes = TourUtility.tours.loc[TourUtility.tours["eqasim_selected"], cols].explode()
+        selected_modes = TourUtility.tours.loc[TourUtility.tours["eqasim_selected"], cols].explode(column=cols)
         selected_modes = selected_modes[selected_modes.euclidean_distance>1e-3] #same selection as in modeShares
         
         eqasim_global_mode_share = dict()        

@@ -6,7 +6,6 @@ Created on Fri May 30 16:42:45 2025
 @author: dabdelkader
 """
 
-# utils.py
 from typing import Dict
 import os
 from Optimizer.BetaRateRise import BetaRateRise
@@ -15,7 +14,22 @@ from Optimizer.PopulationFactor import PopulationFactor
 
 
 def parse_dict(input_str: str) -> Dict[str, float]:
-    return {k: float(v) for k, v in (pair.split(":") for pair in input_str.split(","))}
+    input_str = input_str.replace("\n", "")
+    result = {}
+    for pair in input_str.split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        if ":" not in pair:
+            raise ValueError(f"Invalid key-value pair: {pair}")
+        key, value = pair.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        try:
+            result[key] = float(value)
+        except ValueError:
+            raise ValueError(f"Invalid float value: {value}")
+    return result
 
 def check_required_files(paths: list[str]):
     for path in paths:
@@ -41,12 +55,12 @@ def get_files(args):
     return files
 
 
-def get_beta_and_population(args):
+def get_beta_and_population(args, beta_method = "step", population_method = "step"):
     BetaRateRise.set_beta(args.beta_momentum)
-    beta = BetaRateRise.get_beta(args.iteration)
+    beta = BetaRateRise.get_beta(args.iteration, method=beta_method)
 
     PopulationFactor.set_population(args.population_sample)
-    population = PopulationFactor.get_population(args.iteration)
+    population = PopulationFactor.get_population(args.iteration, method = population_method)
     
     return beta, population
 
