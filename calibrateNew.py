@@ -67,7 +67,6 @@ TourUtility.read_and_init(files["tours"],
                           {"car": files["car"], "pt": files["pt"],"bike": files["bike"],
                             "walk": files["walk"], "car_passenger": files["car_passenger"]}, 
                           population_sample=population)
-
 # myLoss.get_estimated_mode_shares()
 # ########## Optimize ###########
 # optimizer = get_optimizer(args,  objective_function=myLoss)

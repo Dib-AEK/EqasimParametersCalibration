@@ -134,9 +134,9 @@ class TourUtility(BaseUtility):
 
         # Process each mode's trips in a vectorized manner
         for mode, estimator in TourUtility.utility_estimators.items():
-            if mode == 'car_passenger':
-                continue  # Already initialized to 0, but need to be remove if we change the utility estimator
-            
+            if mode == "car_passenger":
+                continue
+    
             variables_df = TourUtility.variables_by_mode.get(mode)
             if variables_df is None:
                 raise RuntimeError(f"Missing variables dataframe for mode {mode}.")
