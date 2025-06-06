@@ -16,6 +16,7 @@ from Utilities.TourUtility import TourUtility
 from Utilities.Selector import Selector
 from Utilities.BaseUtility import BaseUtility
 from modeShares.modeShares import ModeShares
+import time
 
 class Loss:
     
@@ -41,7 +42,10 @@ class Loss:
         
         self.modes = ["car","walk","bike","pt","car_passenger"]         
         self.calibration_modes = ["car","pt","bike","walk"]
-        
+        self.utility_time = []
+        self.selector_time = []
+        self.mode_share_time = []
+
     def get_loss(self, parameters=None):
         if parameters is not None:
             BaseUtility.set_parameters(parameters)
@@ -60,10 +64,13 @@ class Loss:
         """
         if modes == None:
             modes = self.modes
-            
+
+        to = time.time() 
         tours = TourUtility.get_all_utilities()
+        t1 = time.time()
         tours = Selector.select(tours)
-        
+        t2 = time.time()
+
         cols = ["candidate_mode", "euclidean_distance"] 
         selected_modes = tours.loc[tours.selected, cols].explode(column = cols)
         selected_modes = selected_modes[selected_modes.euclidean_distance>1e-3] #same selection as in modeShares
@@ -86,7 +93,11 @@ class Loss:
             mode_shares_by_bin = grouped.div(grouped.sum(axis=1), axis=0).fillna(0)
             estimates_mode_share_distribution = {mode: mode_shares_by_bin[mode].tolist()
                                                  for mode in modes}
-                
+        t3 = time.time()
+
+        self.utility_time.append(t1-to)
+        self.selector_time.append(t2-t1)    
+        self.mode_share_time.append(t3-t2)    
         return estimates_global_mode_share, estimates_mode_share_distribution
     
     @property

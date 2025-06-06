@@ -8,6 +8,7 @@ Created on Wed May 21 17:21:26 2025
 from Utilities.BaseUtility import BaseUtility
 import pandas as pd
 import numpy as np
+import polars as pl
 
 class BikeUtility(BaseUtility):
     
@@ -16,8 +17,19 @@ class BikeUtility(BaseUtility):
         #(BaseUtility.bike.betaStatedPreferenceRegion3_u if variables["statedPreferenceRegion"] == 3 else 0.0)
         beta1 = 0.0
         beta3 = BaseUtility.swissBike.betaStatedPreferenceRegion3_u
-    
-        if isinstance(variables, dict) or (isinstance(variables, pd.Series) and "statedPreferenceRegion" in variables and variables.ndim == 1):
+        
+        if isinstance(variables, pl.DataFrame):
+            # Use Polars expressions for efficient conditional logic
+            return ( variables.select(
+                    pl.when(pl.col("statedPreferenceRegion") == 1)
+                    .then(beta1)
+                    .when(pl.col("statedPreferenceRegion") == 3)
+                    .then(beta3)
+                    .otherwise(0.0)
+                    .alias("regional_utility")
+                    ).to_series())
+
+        elif isinstance(variables, dict) or (isinstance(variables, pd.Series) and "statedPreferenceRegion" in variables and variables.ndim == 1):
             # Handles dict or row Series
             region = variables["statedPreferenceRegion"]
             if region == 1:
@@ -37,6 +49,17 @@ class BikeUtility(BaseUtility):
     
         else:
             raise TypeError("Unsupported input type.")
+
+    @staticmethod
+    def estimateAgeUtility(variables):
+        beta = BaseUtility.bike.betaAgeOver18_u_a 
+        
+        if isinstance(variables, pl.DataFrame):
+            # Use Polars expressions for efficient conditional logic
+            return beta * pl.max_horizontal(0.0, pl.col("age_a") - 18)
+        else:
+            return beta * np.maximum(0.0, variables["age_a"] - 18) 
+            
             
     @staticmethod
     def compute(variables):
@@ -55,7 +78,7 @@ class BikeUtility(BaseUtility):
         utility = (
             BaseUtility.bike.alpha_u +
             BaseUtility.bike.betaTravelTime_u_min * variables["travelTime_min"] +
-            BaseUtility.bike.betaAgeOver18_u_a * np.maximum(0.0, variables["age_a"] - 18) +
+            BikeUtility.estimateAgeUtility(variables)+
             BikeUtility.estimateRegionalUtility(variables)            
         )
         return utility
@@ -63,9 +86,10 @@ class BikeUtility(BaseUtility):
         
     
     def read_csv(file_path):
-        df = pd.read_csv(file_path, sep=";")
-        df["index"] = df[["person_id", "trip_index"]].apply(lambda x: f"{x['person_id']}_{x['trip_index']}", axis=1)
-        df.set_index("index", inplace=True)
+        df = pl.read_csv(file_path, separator=";")
+        df = df.with_columns(
+            (pl.col("person_id").cast(pl.Utf8) + "_" + pl.col("trip_index").cast(pl.Utf8)).alias("trip_key")
+        )
         return df
     
     

@@ -39,12 +39,8 @@ class MomentumBase(ABC):
         Args:
             values: Dictionary of parameter names and their initial values.
         """
-        values = values.copy()
-        if not self.param_keys:
-            self.param_keys = list(values.keys())
-        elif self.param_keys != list(values.keys()):
-            raise ValueError("Parameter keys must match across iterations.")
-            
+        values = values.copy()        
+        self.param_keys = list(values.keys())
         self.initial_values = np.array([values[k] for k in self.param_keys], dtype=np.float64)
     
     def set_optimal_values(self, values: Dict[str, float]) -> None:

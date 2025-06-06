@@ -8,7 +8,7 @@ Created on Wed May 21 18:16:46 2025
 from Utilities.CarUtility import CarUtility
 from Utilities.BaseUtility import BaseUtility
 import pandas as pd
-
+import polars as pl
 
 class PtUtility(BaseUtility):
     
@@ -39,9 +39,10 @@ class PtUtility(BaseUtility):
     
     
     def read_csv(file_path):
-        df = pd.read_csv(file_path, sep=";")
-        df["index"] = df[["person_id", "trip_index"]].apply(lambda x: f"{x['person_id']}_{x['trip_index']}", axis=1)
-        df.set_index("index", inplace=True)
+        df = pl.read_csv(file_path, separator=";")
+        df = df.with_columns(
+            (pl.col("person_id").cast(pl.Utf8) + "_" + pl.col("trip_index").cast(pl.Utf8)).alias("trip_key")
+        )
         return df
     
     

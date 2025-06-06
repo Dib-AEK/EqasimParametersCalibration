@@ -9,6 +9,7 @@ Created on Thu May 22 09:46:14 2025
 from abc import ABC, abstractmethod, ABCMeta
 import pandas as pd
 import numpy as np
+import polars as pl
 from Utilities.Parameters import Parameters
 
 class MetaCls(ABCMeta):
@@ -57,14 +58,22 @@ class BaseUtility(ABC, metaclass=MetaCls):
 
     
     @staticmethod
-    def interaction(euclidean_distance_km: float) -> float:
+    def interaction(euclidean_distance_km):
         """
         Computes the distance interaction factor.
+        
+        Handles both Polars Series and scalar-like inputs.
         """
-        euc_distance = np.maximum(euclidean_distance_km, 1e-3)
-        lambda_val   = BaseUtility.cost.lambdaCostEuclideanDistance
-        reference_distance_km = BaseUtility.cost.referenceEuclideanDistance_km
-        return (euc_distance / reference_distance_km) ** lambda_val
+        lambda_val = BaseUtility.cost.lambdaCostEuclideanDistance
+        ref_dist_km = BaseUtility.cost.referenceEuclideanDistance_km
+    
+        # Case 1: Input is a Polars Series
+        if isinstance(euclidean_distance_km, pl.Series):
+            euc_distance = euclidean_distance_km.clip(lower_bound=1e-3)
+        else:
+            euc_distance = np.maximum(euclidean_distance_km, 1e-3)
+        
+        return (euc_distance / ref_dist_km) ** lambda_val
     
     @staticmethod
     @abstractmethod
@@ -77,13 +86,10 @@ class BaseUtility(ABC, metaclass=MetaCls):
 
     @staticmethod    
     def read_csv(file_path):
-        """
-        Abstract method to read the csv file created by MATSim.
-        Must be implemented by subclasses.
-        """
-        df = pd.read_csv(file_path, sep=";")
-        df["index"] = df[["person_id", "trip_index"]].apply(lambda x: f"{x['person_id']}_{x['trip_index']}", axis=1)
-        df.set_index("index", inplace=True)
+        df = pl.read_csv(file_path, separator=";")
+        df = df.with_columns(
+            (pl.col("person_id").cast(pl.Utf8) + "_" + pl.col("trip_index").cast(pl.Utf8)).alias("trip_key")
+        )
         return df
 
 

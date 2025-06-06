@@ -8,6 +8,7 @@ Created on Wed May 21 17:48:11 2025
 from Utilities.BaseUtility import BaseUtility
 import pandas as pd
 import numpy as np
+import polars as pl
 
 class CarUtility(BaseUtility):    
     
@@ -15,8 +16,19 @@ class CarUtility(BaseUtility):
     def estimateRegionalUtility(variables):
         beta1 = BaseUtility.swissCar.betaStatedPreferenceRegion1_u
         beta3 = BaseUtility.swissCar.betaStatedPreferenceRegion3_u
-    
-        if isinstance(variables, dict) or (isinstance(variables, pd.Series) and "statedPreferenceRegion" in variables and variables.ndim == 1):
+        
+        if isinstance(variables, pl.DataFrame):
+            # Use Polars expressions for efficient conditional logic
+            return ( variables.select(
+                    pl.when(pl.col("statedPreferenceRegion") == 1)
+                    .then(beta1)
+                    .when(pl.col("statedPreferenceRegion") == 3)
+                    .then(beta3)
+                    .otherwise(0.0)
+                    .alias("regional_utility")
+                    ).to_series())
+        
+        elif isinstance(variables, dict) or (isinstance(variables, pd.Series) and "statedPreferenceRegion" in variables and variables.ndim == 1):
             # Handles dict or row Series
             region = variables["statedPreferenceRegion"]
             if region == 1:
@@ -63,9 +75,10 @@ class CarUtility(BaseUtility):
         return utility
 
     def read_csv(file_path):
-        df = pd.read_csv(file_path, sep=";")
-        df["index"] = df[["person_id", "trip_index"]].apply(lambda x: f"{x['person_id']}_{x['trip_index']}", axis=1)
-        df.set_index("index", inplace=True)
+        df = pl.read_csv(file_path, separator=";")
+        df = df.with_columns(
+            (pl.col("person_id").cast(pl.Utf8) + "_" + pl.col("trip_index").cast(pl.Utf8)).alias("trip_key")
+        )
         return df
         
         

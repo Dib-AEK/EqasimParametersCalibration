@@ -41,7 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eqasim-cache-path", type=str, default="/home/dabdelkader/Euler/ch-zh-synpop/cache10p100",
                         help="Base path to the cache dir of the synpop in order to get mode shares from microsensus.")
     
-    parser.add_argument("--iteration", type=int, default=1,
+    parser.add_argument("--iteration", type=int, default=60,
                         help="Iteration number to read simulation files from.")        
     
     parser.add_argument("--bounds", type=str,
@@ -80,6 +80,11 @@ def check_args(args):
     # Turn bounds into a dict
     bounds = parse_dict(args.bounds)
     args.bounds = bounds
+    
+    if (not args.calibrate_modeshare_distribution) and (not args.calibrate_global_modeshare):
+        logger.info( "Set runCalibration to False if you don't want to run calibration" )
+        logger.info( "Calibrate global mode share is set to True because calibrateModeShareDistribution is False")
+        args.calibrate_global_modeshare = True
     
     if args.calibrate_modeshare_distribution and all(["alpha" in p for p in bounds.keys()]):
         warnings.warn(

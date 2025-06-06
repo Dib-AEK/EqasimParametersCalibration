@@ -15,7 +15,7 @@ from Utilities.ZeroUtility import ZeroUtility
 import pandas as pd
 import numpy as np
 from scipy.stats import qmc
-
+import polars as pl
 
 class TourUtility(BaseUtility):
     utility_estimators = {
@@ -52,7 +52,7 @@ class TourUtility(BaseUtility):
         
         if tours is not None:
             TourUtility.tours = tours
-            TourUtility.persons = tours.person_id.unique()
+            TourUtility.persons = tours["person_id"].unique()
             TourUtility.num_persons = len(TourUtility.persons)
             # Here we include Euclidean distance in the tours dataframe in order to get mode shares distribution
             TourUtility.create_distance_column_in_tours()
@@ -115,20 +115,22 @@ class TourUtility(BaseUtility):
         if TourUtility.tours is None:
             raise RuntimeError("Tours are not initialized.")
         
-        cols = ['person_id', 'trips_index', 'selection_id', 'candidate_mode','euclidean_distance']
-        tours = TourUtility.tours[cols].copy()
+        cols = ['person_id', 'trip_key', 'selection_id', 'candidate_mode','euclidean_distance']
+        tours = TourUtility.tours.select(cols)
         
         # Only select a sample
-        if TourUtility.sample is not None and TourUtility.sample<TourUtility.num_persons:            
+        if TourUtility.sample is not None and TourUtility.sample < TourUtility.num_persons:
             sample_population = TourUtility.get_population_sample()
-            tours = tours[tours.person_id.isin(sample_population)].reset_index(drop=True)
+            tours = tours.filter(pl.col("person_id").is_in(sample_population)).with_row_index(name="tour_row_id")
+        else:
+            tours = tours.with_row_index(name="tour_row_id")
         
         
         # Explode tours into individual trips
-        exploded = tours[['person_id','trips_index','candidate_mode']].explode(['trips_index', 'candidate_mode'])
-        exploded['trip_key'] = (exploded['person_id'].astype(str) + '_'
-                                + exploded['trips_index'].astype(str))
-        exploded['utility'] = 0.0  # Initialize utility
+        exploded = (tours.select(['trip_key','candidate_mode'])
+                    .explode(['trip_key', 'candidate_mode'])        
+                    .with_columns(pl.lit(0.0).alias("utility")))
+        
 
         # Process each mode's trips in a vectorized manner
         for mode, estimator in TourUtility.utility_estimators.items():
@@ -139,66 +141,109 @@ class TourUtility(BaseUtility):
             if variables_df is None:
                 raise RuntimeError(f"Missing variables dataframe for mode {mode}.")
             
-            mask = exploded['candidate_mode'] == mode
-            if mask.sum()==0:
+            mode_mask = exploded["candidate_mode"] == mode
+            mode_trips = exploded.filter(mode_mask)
+            if mode_trips.is_empty():
                 continue
             
+            trip_keys = mode_trips["trip_key"].to_list()
             try:
-                mode_vars = variables_df.reindex(exploded.loc[mask,'trip_key'])
-            except KeyError:
-                raise RuntimeError(f"Missing keys for mode {mode}.")
+                mode_vars = variables_df.filter(pl.col("trip_key").is_in(trip_keys))
+            except Exception as e:
+                raise RuntimeError(f"Missing keys for mode {mode}: {e}")
             
-            if not mode_vars.empty:
-                # Vectorized computation (ensure estimator can handle DataFrame)
+            if not mode_vars.is_empty():
                 utilities = estimator.compute(mode_vars)
-                exploded.loc[mask, 'utility'] = utilities.values
+                utility_series = pl.Series("utility", utilities)
+                
+                mode_update = mode_trips.select("trip_key", "tour_row_id").with_columns(utility_series)
+                exploded = exploded.join(mode_update, on=["tour_row_id", "trip_key"], how="left").with_columns(
+                    pl.coalesce([pl.col("utility_right"), pl.col("utility")]).alias("utility")
+                ).drop("utility_right")
+                
+                
         
-        # Sum utilities by original tour index
-        tours['utility'] = exploded.groupby(level=0)['utility'].sum()
-        return tours[[*cols, "utility"]]
+        # Aggregate utilities per original tour
+        aggregated = exploded.group_by("tour_row_id").agg(pl.col("utility").sum().alias("utility"))
+        
+        # Join utilities back to original tours
+        updated_tours = tours.join(aggregated, on="tour_row_id").drop("tour_row_id")
+        
+        return updated_tours.select([*cols, "utility"])
 
 
     @staticmethod
     def read_csv(file_path):
-        df = pd.read_csv(file_path, sep=";")
-        df["trips_index"] = df["trips_index"].str.split(',')
-        df["candidate_mode"] = df["candidate_mode"].str.split(',')
-        df["utilities"] = df["utilities"].str.split(',').apply(lambda lst: [float(x) for x in lst])
-        df = df.rename(columns={"utilities":"eqasim_utilities",
-                                "utility":"eqasim_utility",
-                                "selected":"eqasim_selected"})
+        df = (
+            pl.read_csv(file_path, separator=";")
+            .with_columns(
+                # Split strings into lists
+                pl.col("trips_index").str.split(","),
+                pl.col("candidate_mode").str.split(","),
+                
+                # Split utilities and cast to float list
+                pl.col("utilities").str.split(",")
+                .list.eval(pl.element().cast(pl.Float32))
+            )
+            .rename({
+                "utilities": "eqasim_utilities",
+                "utility": "eqasim_utility",
+                "selected": "eqasim_selected"
+            })
+        )
         return df
     
     @staticmethod
     def create_distance_column_in_tours():
-        tours = TourUtility.tours[['person_id', 'selection_id', 'trips_index', 'candidate_mode']].copy()
-        
-        # Explode tours into individual trips
-        exploded = tours.explode(['trips_index', 'candidate_mode'])
-        exploded['trip_key'] = (exploded['person_id'].astype(str) + '_'
-                                + exploded['trips_index'].astype(str))
-        exploded['euclidean_distance'] = np.nan
+        # Add a stable row index to preserve original tour rows
+        tours = TourUtility.tours.with_row_index(name="tour_row_id").select(
+                ['tour_row_id', 'person_id', 'trips_index', 'candidate_mode'])
     
-        for mode in ["car","pt","walk","bike","car_passenger"]:            
+        # Explode tours into individual trips
+        exploded = (tours.explode(["trips_index", "candidate_mode"])
+                    .with_columns(
+                        (pl.col("person_id").cast(pl.Utf8) + "_" + pl.col("trips_index").cast(pl.Utf8))
+                        .alias("trip_key"))
+                    .with_columns(pl.lit(None).cast(pl.Float64).alias("euclidean_distance"))
+                    )
+    
+        for mode in ["car", "pt", "walk", "bike", "car_passenger"]:
             variables_df = TourUtility.variables_by_mode.get(mode)
             if variables_df is None:
                 raise RuntimeError(f"Missing variables dataframe for mode {mode}.")
-            
-            mask = exploded['candidate_mode'] == mode
-            
-            try:                
-                distances = variables_df.reindex(exploded.loc[mask,'trip_key'])["euclideanDistance_km"].values
-                exploded.loc[mask, 'euclidean_distance'] = distances
-            except KeyError:
-                raise RuntimeError(f"Missing keys for mode {mode}.")                            
+    
+            variables_df = variables_df.select(["trip_key", "euclideanDistance_km"]
+                            ).rename({"euclideanDistance_km": "euclidean_distance"})            
+    
+            # Join distances on trip_key
+            exploded = exploded.join(variables_df, on="trip_key", how="left")
+    
+            # Update only rows where candidate_mode == mode
+            exploded = exploded.with_columns(
+                pl.when(pl.col("candidate_mode") == mode)
+                  .then(pl.col("euclidean_distance_right"))  # from join
+                  .otherwise(pl.col("euclidean_distance"))   # keep existing
+                  .alias("euclidean_distance")
+            ).drop("euclidean_distance_right")
+    
+        # Group back by original tour row ID and collect euclidean_distance as list
+        updated_tours = (exploded.select(["tour_row_id","trip_key","euclidean_distance"])
+                         .group_by("tour_row_id")
+                         .agg([pl.col("trip_key"),pl.col("euclidean_distance")])
+                         .sort("tour_row_id"))
         
-        tours['euclidean_distance'] = exploded.groupby(level=0)['euclidean_distance'].agg(list)
-        TourUtility.tours['euclidean_distance']  = tours['euclidean_distance'] 
+        TourUtility.tours = TourUtility.tours.with_columns([
+                updated_tours["euclidean_distance"].alias("euclidean_distance"),
+                updated_tours["trip_key"].alias("trip_key")
+            ])
+            
+
         
                 
     @staticmethod
     def read_and_init(file_path, files:dict, population_sample = None):
-        tours = TourUtility.read_csv(file_path)
+        tours = TourUtility.read_csv(file_path)        
+        
         
         bike = BikeUtility.read_csv(files["bike"])
         car  = CarUtility.read_csv(files["car"])

@@ -110,7 +110,7 @@ class ExponentialMovingAverage(MomentumBase):
         """
  
         # Initialize if needed
-        if len(self.initial_values) and len(self.optimal_values):
+        if len(self.initial_values) and len(self.initial_values)==len(self.optimal_values):
             beta = self.hyperparams["momentum"]
             self.smoothed_values = beta * self.initial_values + (1 - beta) * self.optimal_values
             
