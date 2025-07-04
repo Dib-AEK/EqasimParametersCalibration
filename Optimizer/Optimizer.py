@@ -39,7 +39,8 @@ class Optimizer(ABC):
         self.lb = [self.initial_values[p] - self.bounds[p] for p in self.param_names]
         self.ub = [self.initial_values[p] + self.bounds[p] for p in self.param_names]
         
-        
+        self.explored_solutions = []
+        self.explored_objectives = []
 
     @abstractmethod
     def optimize(self) -> Dict[str, Any]:
@@ -53,7 +54,7 @@ class Optimizer(ABC):
 
     def _objective(self, paramaters: list) -> float:
         """Objective function wrapper"""
-        param_dict = {name: val for name, val in zip(self.param_names, paramaters)}        
+        param_dict = dict(zip(self.param_names, paramaters))
         return self.objective_function.get_loss(param_dict)
 
     def get_actual_mode_shares(self, modes=None):

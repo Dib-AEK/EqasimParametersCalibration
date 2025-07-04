@@ -17,6 +17,10 @@ class ZeroUtility(BaseUtility):
     def compute(variables):
         return variables["euclideanDistance_km"]*0.0 #just to make it same ttype
     
+    @staticmethod
+    def compute_lazy():
+        return pl.lit(0.0) 
+    
     def read_csv(file_path):
         df = pl.read_csv(file_path, separator=";")
         df = df.with_columns(

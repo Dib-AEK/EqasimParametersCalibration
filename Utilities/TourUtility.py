@@ -16,6 +16,12 @@ import pandas as pd
 import numpy as np
 from scipy.stats import qmc
 import polars as pl
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
+import time
+import glob
+import os
+
 
 class TourUtility(BaseUtility):
     utility_estimators = {
@@ -29,34 +35,43 @@ class TourUtility(BaseUtility):
     # Shared class-level variables for dataframes
     variables_by_mode = {}
     tours = None
+    exploded_tours = None
     persons = []
     num_persons = 0
     sample = None
-    sobol_generator = qmc.Sobol(d=1, scramble=True)
-    use_sobol = False
     
     @staticmethod
-    def init_data(car, pt, bike, walk, cp, tours=None, population_sample = None):
+    def init_data(car, pt, bike, walk, cp, tours=None, population_sample = None, eqasim_cache_dir=None):
         """
         Initializes mode-specific input data once.
         """
         TourUtility.variables_by_mode = {
-            "car": car,
-            "pt": pt,
-            "bike": bike,
-            "walk": walk,
-            "car_passenger":cp
+            "car": car.lazy(),
+            "pt": pt.lazy(),
+            "bike": bike.lazy(),
+            "walk": walk.lazy(),
+            "car_passenger":cp.lazy()
         }
         
         TourUtility.sample = population_sample
+        TourUtility.eqasim_cache_dir = eqasim_cache_dir
         
         if tours is not None:
-            TourUtility.tours = tours
-            TourUtility.persons = tours["person_id"].unique()
-            TourUtility.num_persons = len(TourUtility.persons)
+            TourUtility.tours = tours.lazy()
             # Here we include Euclidean distance in the tours dataframe in order to get mode shares distribution
             TourUtility.create_distance_column_in_tours()
-      
+            # Here, we include other attributes (age, income, sex, canton) for distributions
+            if eqasim_cache_dir is not None:
+                TourUtility.add_person_attributes_to_tours()
+            
+            # for better efficiency, we explode tours here
+            exploded_tours = TourUtility.get_exploded_tours_for_utilities()
+            TourUtility.exploded_tours = {k:v.lazy() for k,v in exploded_tours.items()}
+            
+            TourUtility.persons = tours["person_id"].unique()
+            TourUtility.num_persons = len(TourUtility.persons)
+            
+            
     @staticmethod
     def set_population_sample(population_sample):
         TourUtility.sample = population_sample
@@ -100,77 +115,68 @@ class TourUtility(BaseUtility):
     
     @staticmethod
     def get_population_sample():
-        if TourUtility.use_sobol:
-            samples = TourUtility.sobol_generator.random(TourUtility.sample)
-            indices = np.floor(samples.flatten() * TourUtility.num_persons).astype(int)
-            unique_indices = np.unique(indices)             
-            sample_population = TourUtility.persons[unique_indices]
-        else:
-            sample_population = np.random.choice(TourUtility.persons, size=TourUtility.sample)  
-        
+        sample_population = np.random.choice(TourUtility.persons, size=TourUtility.sample)  
         return sample_population
     
+    
     @staticmethod
-    def get_all_utilities():
+    def get_exploded_tours_for_utilities():
         if TourUtility.tours is None:
             raise RuntimeError("Tours are not initialized.")
-        
-        cols = ['person_id', 'trip_key', 'selection_id', 'candidate_mode','euclidean_distance']
-        tours = TourUtility.tours.select(cols)
-        
-        # Only select a sample
-        if TourUtility.sample is not None and TourUtility.sample < TourUtility.num_persons:
-            sample_population = TourUtility.get_population_sample()
-            tours = tours.filter(pl.col("person_id").is_in(sample_population)).with_row_index(name="tour_row_id")
-        else:
-            tours = tours.with_row_index(name="tour_row_id")
-        
-        
-        # Explode tours into individual trips
-        exploded = (tours.select(['trip_key','candidate_mode'])
-                    .explode(['trip_key', 'candidate_mode'])        
-                    .with_columns(pl.lit(0.0).alias("utility")))
-        
-
-        # Process each mode's trips in a vectorized manner
-        for mode, estimator in TourUtility.utility_estimators.items():
-            if mode == "car_passenger":
-                continue
     
-            variables_df = TourUtility.variables_by_mode.get(mode)
-            if variables_df is None:
-                raise RuntimeError(f"Missing variables dataframe for mode {mode}.")
-            
-            mode_mask = exploded["candidate_mode"] == mode
-            mode_trips = exploded.filter(mode_mask)
-            if mode_trips.is_empty():
-                continue
-            
-            trip_keys = mode_trips["trip_key"].to_list()
-            try:
-                mode_vars = variables_df.filter(pl.col("trip_key").is_in(trip_keys))
-            except Exception as e:
-                raise RuntimeError(f"Missing keys for mode {mode}: {e}")
-            
-            if not mode_vars.is_empty():
-                utilities = estimator.compute(mode_vars)
-                utility_series = pl.Series("utility", utilities)
-                
-                mode_update = mode_trips.select("trip_key", "tour_row_id").with_columns(utility_series)
-                exploded = exploded.join(mode_update, on=["tour_row_id", "trip_key"], how="left").with_columns(
-                    pl.coalesce([pl.col("utility_right"), pl.col("utility")]).alias("utility")
-                ).drop("utility_right")
-                
-                
-        
-        # Aggregate utilities per original tour
-        aggregated = exploded.group_by("tour_row_id").agg(pl.col("utility").sum().alias("utility"))
-        
-        # Join utilities back to original tours
-        updated_tours = tours.join(aggregated, on="tour_row_id").drop("tour_row_id")
-        
-        return updated_tours.select([*cols, "utility"])
+        cols = ["tour_row_id", "trip_key", "candidate_mode"]
 
+        # Explode trips and candidate modes
+        exploded_lazy = (
+            TourUtility.tours.select(cols)
+            .explode(["trip_key", "candidate_mode"])
+            .with_columns([
+            pl.col("candidate_mode").cast(pl.Categorical)
+            ])
+        ).collect()
+        
+        exploded_lazy = {mode: exploded_lazy.filter(pl.col("candidate_mode") == mode)
+                         for mode in TourUtility.utility_estimators}
+        return exploded_lazy
+    
+    @staticmethod
+    def compute_mode_utilities(exploded_lazy: pl.LazyFrame, mode: str) -> pl.LazyFrame:
+        estimator = TourUtility.utility_estimators.get(mode)
+        variables_lazy = TourUtility.variables_by_mode.get(mode)
+    
+        return (
+            exploded_lazy
+            .join(variables_lazy, on="trip_key", how="left")
+            .with_columns([
+                estimator.compute_lazy().cast(pl.Float64)
+                .alias("utility")
+            ])
+            .select(["tour_row_id","utility"])
+        )
+        
+        
+    @staticmethod
+    def get_all_utilities():
+        #select data
+        exploded_lazy = TourUtility.exploded_tours
+        cols = ['tour_row_id', 'person_id', 'trip_key', 'selection_id', 'candidate_mode', 'euclidean_distance',
+                'age_class','sex','income_class','canton_id']
+        tours_lazy = TourUtility.tours.select(cols)
+        
+        # Compute utilities per mode
+        results = (pl.concat([ TourUtility.compute_mode_utilities(exploded_lazy[mode], mode)
+                              for mode in TourUtility.utility_estimators])
+                   .group_by("tour_row_id")
+                   .agg(pl.col("utility").sum().alias("utility")))
+                   
+        
+        # join with tours and return results
+        results = (tours_lazy
+                    .join(results, on="tour_row_id", how="left")
+                    .select([*cols, "utility"]))
+        
+        return results
+        
 
     @staticmethod
     def read_csv(file_path):
@@ -190,14 +196,15 @@ class TourUtility(BaseUtility):
                 "utility": "eqasim_utility",
                 "selected": "eqasim_selected"
             })
+            .with_row_index(name="tour_row_id")
         )
         return df
     
     @staticmethod
     def create_distance_column_in_tours():
         # Add a stable row index to preserve original tour rows
-        tours = TourUtility.tours.with_row_index(name="tour_row_id").select(
-                ['tour_row_id', 'person_id', 'trips_index', 'candidate_mode'])
+        tours = TourUtility.tours.select(
+                ['tour_row_id', 'person_id', 'trips_index', 'candidate_mode']).collect()
     
         # Explode tours into individual trips
         exploded = (tours.explode(["trips_index", "candidate_mode"])
@@ -208,7 +215,7 @@ class TourUtility(BaseUtility):
                     )
     
         for mode in ["car", "pt", "walk", "bike", "car_passenger"]:
-            variables_df = TourUtility.variables_by_mode.get(mode)
+            variables_df = TourUtility.variables_by_mode.get(mode).collect()
             if variables_df is None:
                 raise RuntimeError(f"Missing variables dataframe for mode {mode}.")
     
@@ -232,16 +239,42 @@ class TourUtility(BaseUtility):
                          .agg([pl.col("trip_key"),pl.col("euclidean_distance")])
                          .sort("tour_row_id"))
         
-        TourUtility.tours = TourUtility.tours.with_columns([
+        tours = TourUtility.tours.collect().with_columns([
                 updated_tours["euclidean_distance"].alias("euclidean_distance"),
                 updated_tours["trip_key"].alias("trip_key")
             ])
-            
-
         
-                
+        TourUtility.tours = tours.lazy()
+            
+    
     @staticmethod
-    def read_and_init(file_path, files:dict, population_sample = None):
+    def add_person_attributes_to_tours(attributes=["age_class","sex","income_class","canton_id"]): 
+        eqasim_cache_dir = TourUtility.eqasim_cache_dir
+        if eqasim_cache_dir is None:
+            return
+        
+        persons_file = glob.glob(os.path.join(eqasim_cache_dir, "**", "*synthesis.population.enriched*.p"), recursive=True)
+        persons_file= max(persons_file, key=os.path.getctime)
+        
+        
+        persons = pd.read_pickle(persons_file)        
+        persons = persons.astype({ "age_class": int,
+                                   "sex": int,
+                                   "income_class": int,
+                                   "canton_id": int})
+
+        persons = pl.from_pandas(persons[["person_id",*attributes]])        
+        
+        tours = TourUtility.tours.collect()
+        tours = tours.join(persons, on="person_id", how="left")
+        
+        assert tours.select(pl.col("sex").is_nan().sum()).item()==0, "Some agents are not found!"
+        
+        TourUtility.tours = tours.lazy()
+        
+        
+    @staticmethod
+    def read_and_init(file_path, files:dict, population_sample = None, eqasim_cache_dir = None):
         tours = TourUtility.read_csv(file_path)        
         
         
@@ -251,7 +284,9 @@ class TourUtility(BaseUtility):
         walk = WalkUtility.read_csv(files["walk"])                                
         cp   = ZeroUtility.read_csv(files["car_passenger"]) 
         
-        TourUtility.init_data(car, pt, bike, walk, cp, tours, population_sample=population_sample)
+        TourUtility.init_data(car, pt, bike, walk, cp, tours, 
+                              population_sample=population_sample,
+                              eqasim_cache_dir = eqasim_cache_dir)
 
 
 

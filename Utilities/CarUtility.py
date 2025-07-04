@@ -73,7 +73,34 @@ class CarUtility(BaseUtility):
         utility += CarUtility.estimateRegionalUtility(variables)
         
         return utility
+    
+    @staticmethod
+    def compute_lazy():
+        utility = BaseUtility.car.alpha_u
+    
+        utility += BaseUtility.car.betaTravelTime_u_min * pl.col("travelTime_min")
+        utility += BaseUtility.walk.betaTravelTime_u_min * pl.col("accessEgressTime_min")
+        
+        cost_interaction = BaseUtility.interaction_lazy( pl.col("euclideanDistance_km") )
+        utility += BaseUtility.cost.betaCost_u_MU * cost_interaction * pl.col("cost_MU")
+    
+        # Region-specific utility using lazy expression
+        beta1 = BaseUtility.swissCar.betaStatedPreferenceRegion1_u
+        beta3 = BaseUtility.swissCar.betaStatedPreferenceRegion3_u
+    
+        regional_utility = (
+            pl.when(pl.col("statedPreferenceRegion") == 1)
+            .then(beta1)
+            .when(pl.col("statedPreferenceRegion") == 3)
+            .then(beta3)
+            .otherwise(0.0)
+        )
+    
+        utility += regional_utility
+    
+        return utility
 
+    
     def read_csv(file_path):
         df = pl.read_csv(file_path, separator=";")
         df = df.with_columns(

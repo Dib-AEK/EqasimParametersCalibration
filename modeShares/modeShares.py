@@ -12,6 +12,8 @@ import hashlib
 import pandas as pd
 from typing import Optional
 import matplotlib.pyplot as plt
+import numpy as np
+
 
 
 class ModeShares:
@@ -40,12 +42,28 @@ class ModeShares:
         else:
             self._setup_files()
             self.trips = self._load_data()
+            
+            self.distance_labels = ['0km-2km', '2km-5km', '5km-8km',
+                                    '8km-12km', '12km-20km', '20km+']
+            self.distance_bins = [0, 2000, 5000, 8000, 12000, 20000, 1000000]
+            
+            self.trips['distance_bin'] = pd.cut(self.trips['crowfly_distance'], 
+                                                bins=self.distance_bins, 
+                                                labels=self.distance_labels, 
+                                                include_lowest=True, 
+                                                ordered=True)
+            
             self.mode_shares = self._get_mode_shares()
-            self.distance_labels = ['0km-1km', '1km-2km', '2km-3km', '3km-5km', '5km-7km',
-                                    '7km-9km', '9km-15km', '15km-20km', '20km+']
-            self.distance_bins = [0, 1000, 2000, 3000, 5000, 7000, 9000, 15000, 20000, 1000000]
             self.mode_shares_distribution = self._get_mode_shares_distribution()
-            self.mode_shares_by_canton = self._get_mode_shares_by_canton()
+            self.mode_shares_by_canton = self._get_mode_shares_by("canton_id")
+            self.mode_shares_by_income = self._get_mode_shares_by("income_class")
+            self.mode_shares_by_age = self._get_mode_shares_by("age_class")
+            
+            self.car_distance_distribution = self._get_mode_distance_distribution("car")
+            self.pt_distance_distribution = self._get_mode_distance_distribution("pt")
+            self.walk_distance_distribution = self._get_mode_distance_distribution("walk")
+            self.bike_distance_distribution = self._get_mode_distance_distribution("bike")
+            
             self.save_to_cache()
 
     def _setup_files(self):
@@ -67,8 +85,8 @@ class ModeShares:
 
         persons = pd.read_pickle(self.persons_file)
         sel = (~persons["person_id"].isin(filterout_ids)) & (persons["weekend"] == False)
-        persons = persons.loc[sel, ['person_id', 'person_weight',
-                                    'age', 'sex', 'income_class', 'canton_id', 'household_weight']]
+        persons = persons.loc[sel, ['person_id', 'person_weight', 'age', 'age_class', 
+                                    'sex', 'income_class', 'canton_id', 'household_weight']]
 
         # Merge with persons to get weights
         trips = trips.merge(persons, how="left", on="person_id")
@@ -78,6 +96,8 @@ class ModeShares:
                (trips.crowfly_distance>1) )
         trips = trips[sel]        
         trips["canton_id"] = trips["canton_id"].astype(int)
+        trips["income_class"] = trips["income_class"].astype(int)
+        trips["age_class"] = trips["age_class"].astype(int)
         return trips
 
     def _get_mode_shares(self):
@@ -91,12 +111,6 @@ class ModeShares:
         return mode_share_person.set_index("mode").to_dict()["mode_share"]
 
     def _get_mode_shares_distribution(self):
-        bins = self.distance_bins
-        labels = self.distance_labels
-
-        self.trips['distance_bin'] = pd.cut(
-            self.trips['crowfly_distance'], bins=bins, labels=labels, include_lowest=True, ordered=True
-        )
 
         mode_distribution_person = (
             self.trips.groupby(['distance_bin', 'mode'], observed=False)
@@ -114,16 +128,37 @@ class ModeShares:
                                        .apply(lambda group: group['mode_share'].tolist()) \
                                        .to_dict()
 
-    def _get_mode_shares_by_canton(self):
-        return (self.trips.groupby(["canton_id", "mode"], observed=False)["person_weight"]
-                .sum()
-                .groupby(level="canton_id")
-                .transform(lambda x: x / x.sum())
-                .rename("mode_share")
-                .reset_index()                
-                .pivot(index="canton_id", columns="mode", values="mode_share")
-                .fillna(0)
-                .to_dict(orient="index"))
+    def _get_mode_shares_by(self, by = "canton_id"):
+        mode_share =  (self.trips
+                        .groupby([by, "mode"], observed=False)["person_weight"]
+                        .sum()
+                        .groupby(level=by)
+                        .transform(lambda x: x / x.sum())                
+                        .rename("mode_share")
+                        .reset_index()                
+                        .pivot(index=by, columns="mode", values="mode_share")
+                        .fillna(0))
+        
+        mode_share = {mode:mode_share[mode].tolist() for mode in mode_share.columns}            
+        return mode_share
+    
+    
+    
+    def _get_mode_distance_distribution(self, mode):
+        cols = ["distance_bin","person_weight"]
+        df = self.trips.loc[self.trips["mode"]==mode, cols].reset_index(drop=True).copy()
+        
+        dist = df.groupby('distance_bin', observed=False)["person_weight"].sum()
+        dist = dist/dist.sum()
+        
+        all_bins_df = pd.DataFrame({"distance_bin": self.distance_labels})
+        all_bins_df = all_bins_df.merge(dist, on="distance_bin", how="left").fillna(0.0)
+        
+        return np.array(all_bins_df["person_weight"].tolist())
+                    
+    
+    
+    
 
     def save_to_cache(self):
         outputs = self.get_all_results()
@@ -139,6 +174,13 @@ class ModeShares:
         self.distance_bins = outputs["distance_bins"]
         self.mode_shares_distribution = outputs["mode_shares_distribution"]
         self.mode_shares_by_canton = outputs["mode_shares_by_canton"]
+        self.mode_shares_by_income = outputs["mode_shares_by_income"]
+        self.mode_shares_by_age = outputs["mode_shares_by_age"]
+        
+        self.car_distance_distribution = np.array(outputs["car_distance"])
+        self.walk_distance_distribution = np.array(outputs["walk_distance"])
+        self.bike_distance_distribution = np.array(outputs["bike_distance"])
+        self.pt_distance_distribution = np.array(outputs["pt_distance"])
 
     def get_all_results(self):
         return {
@@ -146,7 +188,13 @@ class ModeShares:
             "mode_shares_distribution": self.mode_shares_distribution,
             "distance_bins": self.distance_bins,
             "distances": self.distance_labels,
-            "mode_shares_by_canton": self.mode_shares_by_canton
+            "mode_shares_by_canton": self.mode_shares_by_canton,
+            "mode_shares_by_income": self.mode_shares_by_income,
+            "mode_shares_by_age": self.mode_shares_by_age,
+            "car_distance":list(self.car_distance_distribution),
+            "walk_distance":list(self.walk_distance_distribution),
+            "bike_distance":list(self.bike_distance_distribution),
+            "pt_distance":list(self.pt_distance_distribution),
         }
     
     def get_distance_bins(self):
@@ -163,6 +211,15 @@ class ModeShares:
     
     def get_mode_share_by_canton(self):
         return self.mode_shares_by_canton
+
+    def get_mode_share_by_income(self):
+        return self.mode_shares_by_income
+
+    def get_mode_share_by_age(self):
+        return self.mode_shares_by_age
+    
+    def get_distance_distribution_by_mode(self, mode):
+        return getattr(self, f"{mode}_distance_distribution")
     
     def plot_mode_share_by_canton(self):
         df = pd.DataFrame(self.mode_shares_by_canton).T

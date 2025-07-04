@@ -45,10 +45,11 @@ def parse_args() -> argparse.Namespace:
                         help="Iteration number to read simulation files from.")        
     
     parser.add_argument("--bounds", type=str,
-                        default="""car.alpha_u:0.5,pt.alpha_u:0.5,bike.alpha_u:0.5,
-                                   bike.betaTravelTime_u_min:0.2,car.betaTravelTime_u_min:0.2,
-                                   pt.betaLineSwitch_u:0.2,pt.betaWaitingTime_u_min:0.2,
-                                   pt.betaInVehicleTime_u_min:0.2,pt.betaAccessEgressTime_u_min:0.2""",
+                        default="""car.alpha_u:2.0,
+                                   walk.alpha_u:2.0,
+                                   bike.alpha_u:2.0,
+                                   car.betaTravelTime_u_min:2.0,
+                                   walk.betaTravelTime_u_min:2.0 """,
                         help="Parameter bounds as comma-separated key:value pairs")
     
     parser.add_argument("--metric", type=str, default="js",

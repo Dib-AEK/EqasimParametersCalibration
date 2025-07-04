@@ -76,6 +76,15 @@ class BaseUtility(ABC, metaclass=MetaCls):
         return (euc_distance / ref_dist_km) ** lambda_val
     
     @staticmethod
+    def interaction_lazy(euclidean_distance_km):
+        lambda_val = BaseUtility.cost.lambdaCostEuclideanDistance
+        ref_dist_km = BaseUtility.cost.referenceEuclideanDistance_km
+        euc_distance = euclidean_distance_km.clip(lower_bound=1e-3)
+        cost_interaction = (euc_distance / ref_dist_km) ** lambda_val
+        
+        return cost_interaction
+    
+    @staticmethod
     @abstractmethod
     def compute(variables):
         """

@@ -94,45 +94,6 @@ class TPEOptimizer(Optimizer):
         return {"params": best, "loss": trials.best_trial['result']['loss']}
 
 
-@register_optimizer("cmaes")
-class CMAESOptimizer(Optimizer):
-    def optimize(self):
-        import cma
-
-        logger.info("Running CMA-ES Optimization...")
-        
-        # Convert bounds to arrays and define scaling functions
-        lb, ub = np.array(self.lb), np.array(self.ub)
-        def scaler(x):
-            return (x - lb) / (ub - lb)
-        def back_scaler(x):
-            return x * (ub - lb) + lb
-    
-        x0 = np.array([v for k,v in self.initial_values.items()])
-        x0_scaled = scaler(x0)
-        
-        sigma = 1 / 3 
-        
-        options = cma.CMAOptions()
-        options.set("bounds", [np.zeros_like(lb), np.ones_like(lb)])
-        options.set("maxfevals", self.max_evals)
-        
-        es = cma.CMAEvolutionStrategy(x0_scaled, sigma, options)
-        iteration = 0
-        while not es.stop():
-            solutions = es.ask()
-            if iteration==0:
-                solutions.append(x0_scaled) #inform it of the initial solution
-            objectives = [self._objective(back_scaler(sol)) for sol in solutions]            
-            es.tell(solutions, objectives)
-            es.disp()
-            iteration +=1
-        
-        xbest = back_scaler(es.result.xbest)
-        
-        return {"params": dict(zip(self.param_names, xbest)), "loss": es.result.fbest}
-    
-
 @register_optimizer("scipy")
 class ScipyOptimizer(Optimizer):
     method = 'Nelder-Mead'
@@ -402,5 +363,61 @@ class KaiOptimizer(Optimizer):
         reference_mode = list(set(params)-set(keys))[0].split('.')[0]
         assert reference_mode in all_modes, "Couldn't find the reference mode in Kai optimizer."
         return reference_mode
+    
+    
+    
 
-
+@register_optimizer("cmaes")
+class CMAESOptimizer(Optimizer):
+    def optimize(self):
+        import cma
+        from scipy.stats.qmc import Sobol
+        
+        logger.info("Running CMA-ES Optimization...")
+        
+        # Convert bounds to arrays and define scaling functions
+        lb, ub = np.array(self.lb), np.array(self.ub)
+        def scaler(x):
+            return (x - lb) / (ub - lb)
+        def back_scaler(x):
+            return x * (ub - lb) + lb
+    
+        x0 = np.array([v for k,v in self.initial_values.items()])
+        x0_scaled = scaler(x0)
+        
+        sigma = 0.3
+        popsize = int(4+6*np.ceil(np.log(len(lb))))
+        
+        options = cma.CMAOptions()
+        options.set("bounds", [np.zeros_like(lb), np.ones_like(lb)])
+        options.set("maxfevals", self.max_evals)        
+        options.set("popsize", popsize)
+        
+        es = cma.CMAEvolutionStrategy(x0_scaled, sigma, options)
+        iteration = 0
+        while not es.stop():
+            if iteration==0:
+                # popsize = min(es.popsize * len(lb), 
+                #               es.popsize * 5)
+                # sobol_engine = Sobol(d=len(lb), scramble=True)
+                # sobol_samples = sobol_engine.random(n=popsize)
+                # solutions = np.clip(sobol_samples, 0.0, 1.0)                 
+                solutions = es.ask()  
+                objectives = [self._objective(back_scaler(sol)) for sol in solutions]            
+                es.inject(solutions, objectives)
+            else:
+                solutions = es.ask()                                            
+                objectives = [self._objective(back_scaler(sol)) for sol in solutions]            
+                es.tell(solutions, objectives)
+            
+            self.explored_solutions.extend(solutions)
+            self.explored_objectives.extend(objectives)
+            
+            es.disp()
+            iteration +=1
+        
+        xbest = back_scaler(es.result.xbest)
+        
+        return {"params": dict(zip(self.param_names, xbest)), "loss": es.result.fbest}
+    
+    

@@ -37,6 +37,19 @@ class PtUtility(BaseUtility):
         utility += BaseUtility.cost.betaCost_u_MU * cost_interaction * variables["cost_MU"]
         return utility
     
+    @staticmethod
+    def compute_lazy():
+        utility = 0.0
+    
+        utility += BaseUtility.pt.alpha_u
+        utility += BaseUtility.pt.betaAccessEgressTime_u_min * pl.col("accessEgressTime_min")
+        utility += BaseUtility.pt.betaInVehicleTime_u_min * pl.col("inVehicleTime_min")
+        utility += BaseUtility.pt.betaWaitingTime_u_min * pl.col("waitingTime_min")
+        utility += BaseUtility.pt.betaLineSwitch_u * pl.col("numberOfLineSwitches")
+    
+        cost_interaction = BaseUtility.interaction_lazy(pl.col("euclideanDistance_km"))
+        utility += BaseUtility.cost.betaCost_u_MU * cost_interaction * pl.col("cost_MU")
+        return utility
     
     def read_csv(file_path):
         df = pl.read_csv(file_path, separator=";")

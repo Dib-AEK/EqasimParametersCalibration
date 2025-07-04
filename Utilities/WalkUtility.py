@@ -19,6 +19,14 @@ class WalkUtility(BaseUtility):
         )
         return utility
     
+    @staticmethod
+    def compute_lazy():
+        utility = (
+            BaseUtility.walk.alpha_u +
+            BaseUtility.walk.betaTravelTime_u_min * pl.col("travelTime_min")
+        )
+        return utility
+    
     def read_csv(file_path):
         df = pl.read_csv(file_path, separator=";")
         df = df.with_columns(

@@ -52,14 +52,16 @@ class BikeUtility(BaseUtility):
 
     @staticmethod
     def estimateAgeUtility(variables):
-        beta = BaseUtility.bike.betaAgeOver18_u_a 
-        
+        beta = BaseUtility.bike.betaAgeOver18_u_a
+    
         if isinstance(variables, pl.DataFrame):
-            # Use Polars expressions for efficient conditional logic
-            return beta * pl.max_horizontal(0.0, pl.col("age_a") - 18)
+            expr = beta * pl.max_horizontal(0.0, pl.col("age_a") - 18)
+            return variables.select(expr.alias("utility"))["utility"]
         else:
-            return beta * np.maximum(0.0, variables["age_a"] - 18) 
-            
+            return beta * np.maximum(0.0, variables["age_a"] - 18)
+    
+        
+                
             
     @staticmethod
     def compute(variables):
@@ -83,7 +85,28 @@ class BikeUtility(BaseUtility):
         )
         return utility
 
+    @staticmethod
+    def compute_lazy():
+        betaAge = BaseUtility.bike.betaAgeOver18_u_a
+        ageUtility = betaAge * pl.max_horizontal(0.0, pl.col("age_a") - 18)
         
+        beta1 = 0.0
+        beta3 = BaseUtility.swissBike.betaStatedPreferenceRegion3_u
+        regionalUtility = (
+            pl.when(pl.col("statedPreferenceRegion") == 1)
+            .then(beta1)
+            .when(pl.col("statedPreferenceRegion") == 3)
+            .then(beta3)
+            .otherwise(0.0)
+        )
+        
+        utility = (
+            BaseUtility.bike.alpha_u +
+            BaseUtility.bike.betaTravelTime_u_min * pl.col("travelTime_min") +
+            ageUtility+
+            regionalUtility            
+        )
+        return utility
     
     def read_csv(file_path):
         df = pl.read_csv(file_path, separator=";")
