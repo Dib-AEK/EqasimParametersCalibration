@@ -13,7 +13,7 @@ import pandas as pd
 from typing import Optional
 import matplotlib.pyplot as plt
 import numpy as np
-
+import modeShares.utils as U
 
 
 class ModeShares:
@@ -27,10 +27,10 @@ class ModeShares:
 
         # Initialize all instance variables
         self.trips = None
+        self.transit = None
         self.mode_shares = {}
         self.distance_labels = []
         self.distance_bins = []
-        self.mode_share_distribution = {}
 
         # Generate cache file name using deterministic hash
         hash_key = hashlib.sha256(self.eqasim_cache_dir.encode()).hexdigest()
@@ -41,11 +41,12 @@ class ModeShares:
             self.load_from_cache()
         else:
             self._setup_files()
-            self.trips = self._load_data()
+            self.trips, self.transit = self._load_data()
             
-            self.distance_labels = ['0km-2km', '2km-5km', '5km-8km',
-                                    '8km-12km', '12km-20km', '20km+']
-            self.distance_bins = [0, 2000, 5000, 8000, 12000, 20000, 1000000]
+            self.distance_labels = ['0-(0km-1km)', '1-(1km-2km)', '2-(2km-3km)',
+                                    '3-(3km-4km)','4-(4km-5km)', '5-(5km-8km)',
+                                    '6-(8km-12km)','7-(12km-20km)','8-(20km+)'] #)it should be like that for sorting later
+            self.distance_bins = [0, 1000, 2000, 3000, 4000, 5000, 8000, 12000, 20000, 1000000]
             
             self.trips['distance_bin'] = pd.cut(self.trips['crowfly_distance'], 
                                                 bins=self.distance_bins, 
@@ -53,29 +54,36 @@ class ModeShares:
                                                 include_lowest=True, 
                                                 ordered=True)
             
-            self.mode_shares = self._get_mode_shares()
-            self.mode_shares_distribution = self._get_mode_shares_distribution()
-            self.mode_shares_by_canton = self._get_mode_shares_by("canton_id")
-            self.mode_shares_by_income = self._get_mode_shares_by("income_class")
-            self.mode_shares_by_age = self._get_mode_shares_by("age_class")
+            self.mode_shares["global"] = self._get_mode_shares()
+            self.mode_shares["distance"] = self._get_mode_shares_by("distance_bin") #self._get_mode_shares_distribution()
+            self.mode_shares["canton"] = self._get_mode_shares_by("canton_id")
+            self.mode_shares["income"] = self._get_mode_shares_by("income_class")
+            self.mode_shares["age"]    = self._get_mode_shares_by("age_class")
+            self.mode_shares["sp_region"]    = self._get_mode_shares_by("sp_region")
             
-            self.car_distance_distribution = self._get_mode_distance_distribution("car")
-            self.pt_distance_distribution = self._get_mode_distance_distribution("pt")
-            self.walk_distance_distribution = self._get_mode_distance_distribution("walk")
-            self.bike_distance_distribution = self._get_mode_distance_distribution("bike")
+            self.mode_shares["mode_distance"] = self._get_mode_distribution_by("distance_bin")
+            self.mode_shares["mode_canton"] = self._get_mode_distribution_by("canton_id")
+            self.mode_shares["mode_income"] = self._get_mode_distribution_by("income_class")
+            self.mode_shares["mode_age"]    = self._get_mode_distribution_by("age_class")                        
+            
+            self.mode_shares["transit"] = self._get_transit_distributions()
             
             self.save_to_cache()
-
+        
+        assert len(self.distance_bins)==len(self.distance_labels)+1, "Incorrect distance bins/labels"
+        assert len(self.mode_shares["distance"]["car"])==len(self.mode_shares["mode_distance"]["car"])==len(self.distance_labels)
+        
     def _setup_files(self):
         """Automatically find latest trips and persons files."""
         trips_files = glob.glob(os.path.join(self.eqasim_cache_dir, "**", "*data.microcensus.trips*.p"), recursive=True)
         persons_files = glob.glob(os.path.join(self.eqasim_cache_dir, "**", "*data.microcensus.persons*.p"), recursive=True)
+        transit_files = glob.glob(os.path.join(self.eqasim_cache_dir, "**", "*data.microcensus.transit*.p"), recursive=True)
+        if not trips_files or not persons_files or not transit_files:
+            raise FileNotFoundError("Could not find required trips/persons/transit files")
 
-        if not trips_files or not persons_files:
-            raise FileNotFoundError("Could not find required trips/persons files")
-
-        self.trips_file = max(trips_files, key=os.path.getctime)
+        self.trips_file   = max(trips_files, key=os.path.getctime)
         self.persons_file = max(persons_files, key=os.path.getctime)
+        self.transit_file = max(transit_files, key=os.path.getctime)
 
     def _load_data(self):
         trips, filterout_ids = pd.read_pickle(self.trips_file)
@@ -85,7 +93,7 @@ class ModeShares:
 
         persons = pd.read_pickle(self.persons_file)
         sel = (~persons["person_id"].isin(filterout_ids)) & (persons["weekend"] == False)
-        persons = persons.loc[sel, ['person_id', 'person_weight', 'age', 'age_class', 
+        persons = persons.loc[sel, ['person_id', 'person_weight', 'age', 'age_class', 'sp_region',
                                     'sex', 'income_class', 'canton_id', 'household_weight']]
 
         # Merge with persons to get weights
@@ -94,11 +102,19 @@ class ModeShares:
         sel = ((trips.household_weight.notna()) & 
                (trips.person_weight.notna()) &
                (trips.crowfly_distance>1) )
-        trips = trips[sel]        
+        trips = trips[sel].reset_index(drop=True)       
         trips["canton_id"] = trips["canton_id"].astype(int)
         trips["income_class"] = trips["income_class"].astype(int)
         trips["age_class"] = trips["age_class"].astype(int)
-        return trips
+        trips["sp_region"] = trips["sp_region"].astype(int)
+        
+        # loadt trasit
+        transit = pd.read_pickle(self.transit_file)
+        transit = transit[["person_id","trip_id","in_vehicle_time","line_switches","access_egress_time","waiting_time"]]
+        sel = transit.person_id.isin(trips.person_id.unique())
+        transit = transit[sel].reset_index(drop=True)
+        
+        return trips, transit
 
     def _get_mode_shares(self):
         total_person_weight = self.trips['person_weight'].sum()
@@ -108,25 +124,10 @@ class ModeShares:
             .reset_index(name='mode_share')
         )
         mode_share_person['mode_share'] /= total_person_weight
-        return mode_share_person.set_index("mode").to_dict()["mode_share"]
-
-    def _get_mode_shares_distribution(self):
-
-        mode_distribution_person = (
-            self.trips.groupby(['distance_bin', 'mode'], observed=False)
-            .apply(lambda g: g["person_weight"].sum())
-            .reset_index(name='mode_share')
-        )
-
-        mode_distribution_person['mode_share'] = mode_distribution_person.groupby('distance_bin', observed=False)['mode_share'].transform(
-            lambda x: x / x.sum()
-        )
-
-        mode_distribution_person = mode_distribution_person.sort_values('distance_bin')
-
-        return mode_distribution_person.groupby('mode') \
-                                       .apply(lambda group: group['mode_share'].tolist()) \
-                                       .to_dict()
+        mode_share_person = mode_share_person.set_index("mode").to_dict()["mode_share"]
+        mode_share_person = {k:[v,] for k,v in mode_share_person.items()}
+        #I transform them into lists so that everything is consistent
+        return mode_share_person
 
     def _get_mode_shares_by(self, by = "canton_id"):
         mode_share =  (self.trips
@@ -137,29 +138,48 @@ class ModeShares:
                         .rename("mode_share")
                         .reset_index()                
                         .pivot(index=by, columns="mode", values="mode_share")
-                        .fillna(0))
+                        .fillna(0)
+                        .sort_values(by=by))
         
         mode_share = {mode:mode_share[mode].tolist() for mode in mode_share.columns}            
         return mode_share
     
-    
-    
-    def _get_mode_distance_distribution(self, mode):
-        cols = ["distance_bin","person_weight"]
-        df = self.trips.loc[self.trips["mode"]==mode, cols].reset_index(drop=True).copy()
+    def _get_mode_distribution_by(self, by = "distance_bin"):
+        mode_share =  (self.trips
+                        .groupby([by, "mode"], observed=False)["person_weight"]
+                        .sum()
+                        .groupby(level="mode")
+                        .transform(lambda x: x / x.sum())                
+                        .rename("distribution")
+                        .reset_index()                
+                        .pivot(index=by, columns="mode", values="distribution")
+                        .fillna(0)
+                        .sort_values(by=by))
         
-        dist = df.groupby('distance_bin', observed=False)["person_weight"].sum()
-        dist = dist/dist.sum()
-        
-        all_bins_df = pd.DataFrame({"distance_bin": self.distance_labels})
-        all_bins_df = all_bins_df.merge(dist, on="distance_bin", how="left").fillna(0.0)
-        
-        return np.array(all_bins_df["person_weight"].tolist())
+        mode_share = {mode:mode_share[mode].tolist() for mode in mode_share.columns}            
+        return mode_share
                     
     
-    
-    
-
+    def _get_transit_distributions(self):
+        cols = ["person_id","trip_id","distance_bin","person_weight"]
+        sel  = self.trips["mode"]=="pt"
+        df = self.transit.merge(self.trips.loc[sel,cols], on=["person_id","trip_id"], how="left")
+        def get_dist_of(x):
+            return (df.groupby("distance_bin", observed=False)[[x,"person_weight"]]
+                      .apply(lambda g: U.clean_and_weighted_avg(g,x,"person_weight"))
+                      .reset_index(name=x)                 
+                      .sort_values("distance_bin")[x]
+                      .tolist()
+                      )
+        
+        return dict(
+            in_vehicle_time    = get_dist_of("in_vehicle_time"),
+            line_switches      = get_dist_of("line_switches"),
+            waiting_time       = get_dist_of("waiting_time"),
+            access_egress_time = get_dist_of("access_egress_time")
+            )        
+        
+        
     def save_to_cache(self):
         outputs = self.get_all_results()
         with open(self.cache_file, "w") as f:
@@ -172,29 +192,13 @@ class ModeShares:
         self.mode_shares = outputs["mode_shares"]
         self.distance_labels = outputs["distances"]
         self.distance_bins = outputs["distance_bins"]
-        self.mode_shares_distribution = outputs["mode_shares_distribution"]
-        self.mode_shares_by_canton = outputs["mode_shares_by_canton"]
-        self.mode_shares_by_income = outputs["mode_shares_by_income"]
-        self.mode_shares_by_age = outputs["mode_shares_by_age"]
         
-        self.car_distance_distribution = np.array(outputs["car_distance"])
-        self.walk_distance_distribution = np.array(outputs["walk_distance"])
-        self.bike_distance_distribution = np.array(outputs["bike_distance"])
-        self.pt_distance_distribution = np.array(outputs["pt_distance"])
 
     def get_all_results(self):
         return {
             "mode_shares": self.mode_shares,
-            "mode_shares_distribution": self.mode_shares_distribution,
             "distance_bins": self.distance_bins,
             "distances": self.distance_labels,
-            "mode_shares_by_canton": self.mode_shares_by_canton,
-            "mode_shares_by_income": self.mode_shares_by_income,
-            "mode_shares_by_age": self.mode_shares_by_age,
-            "car_distance":list(self.car_distance_distribution),
-            "walk_distance":list(self.walk_distance_distribution),
-            "bike_distance":list(self.bike_distance_distribution),
-            "pt_distance":list(self.pt_distance_distribution),
         }
     
     def get_distance_bins(self):
@@ -206,20 +210,9 @@ class ModeShares:
     def get_mode_shares(self):
         return self.mode_shares
     
-    def get_mode_shares_distribution(self):
-        return self.mode_shares_distribution    
-    
-    def get_mode_share_by_canton(self):
-        return self.mode_shares_by_canton
+    def get_mode_share_by(self, by):
+        return self.mode_shares[by]
 
-    def get_mode_share_by_income(self):
-        return self.mode_shares_by_income
-
-    def get_mode_share_by_age(self):
-        return self.mode_shares_by_age
-    
-    def get_distance_distribution_by_mode(self, mode):
-        return getattr(self, f"{mode}_distance_distribution")
     
     def plot_mode_share_by_canton(self):
         df = pd.DataFrame(self.mode_shares_by_canton).T

@@ -160,7 +160,7 @@ class TourUtility(BaseUtility):
         #select data
         exploded_lazy = TourUtility.exploded_tours
         cols = ['tour_row_id', 'person_id', 'trip_key', 'selection_id', 'candidate_mode', 'euclidean_distance',
-                'age_class','sex','income_class','canton_id']
+                'age_class','sex','income_class','canton_id', 'sp_region']
         tours_lazy = TourUtility.tours.select(cols)
         
         # Compute utilities per mode
@@ -248,7 +248,7 @@ class TourUtility(BaseUtility):
             
     
     @staticmethod
-    def add_person_attributes_to_tours(attributes=["age_class","sex","income_class","canton_id"]): 
+    def add_person_attributes_to_tours(attributes=["age_class","sex","income_class","canton_id", "sp_region"]): 
         eqasim_cache_dir = TourUtility.eqasim_cache_dir
         if eqasim_cache_dir is None:
             return
@@ -261,7 +261,8 @@ class TourUtility(BaseUtility):
         persons = persons.astype({ "age_class": int,
                                    "sex": int,
                                    "income_class": int,
-                                   "canton_id": int})
+                                   "canton_id": int,
+                                   "sp_region":int})
 
         persons = pl.from_pandas(persons[["person_id",*attributes]])        
         
@@ -269,6 +270,7 @@ class TourUtility(BaseUtility):
         tours = tours.join(persons, on="person_id", how="left")
         
         assert tours.select(pl.col("sex").is_nan().sum()).item()==0, "Some agents are not found!"
+        assert tours.select(pl.col("sp_region").is_nan().sum()).item()==0, "Some spRegions are not found!"
         
         TourUtility.tours = tours.lazy()
         

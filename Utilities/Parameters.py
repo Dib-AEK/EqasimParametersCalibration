@@ -101,6 +101,9 @@ class Parameters(ABC):
         """
         Retrieve the parameter classes for the given names.
         """
+        if isinstance(parameters_names, str):
+            parameters_names = [parameters_names]
+            
         if len(parameters_names):
             out_dict = dict()
             for name in parameters_names:

@@ -20,10 +20,10 @@ from utils.utils import (parse_dict, check_required_files, get_beta_and_populati
 from Loss.Loss import Loss
 from Utilities.TourUtility import TourUtility
 from Utilities.BaseUtility import BaseUtility
-from Utilities.Selector import Selector
+from Selector.Selector import Selector
 from Utilities.Parameters import Parameters
 from Optimizer.OptimizersFactory import get_optimizer
-from Optimizer.MomentumsFactory import create_momentum
+from MomentumAndDecay.MomentumsFactory import create_momentum
 from modeShares.modeShares import ModeShares
 from tqdm import tqdm
 
@@ -31,50 +31,59 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # def main():
-# if __name__ == "__main__":    
+# if __name__ == "__main__":  
+#TODO: Chekc all mode shares because when provided with specific modes, it is not correct    
+#TODO: I need to add distribution/cost
+    
 args = parse_args()    
 bounds = args.bounds
 
+
+args.max_evals = 4000    
+args.input_parameters = 'testsAndParams/modeChoiceParameters.yml'
+args.output_parameters = 'testsAndParams/modeChoiceOptimizedParameters.yml'
+args.variables_path = 'testsAndParams/it.120'
+args.eqasim_cache_path = "Z:\ch-zh-synpop/cache10p100"
+args.iteration = 120
+args.optimizer = 'cmaes'
+args.metric = "mse"
+args.objectives = ["global","distance","mode_distance", "sp_region"]
+    
+# Get the files
+files    = get_files(args)
+
+# get beta and populatio sample
+beta, population = get_beta_and_population(args)
+
+logger.info(f"[DEBUG] iter{args.iteration}: Population sample used for optimization: {population}")
+logger.info(f"[DEBUG] iter{args.iteration}: Beta momentum used for updating parameters: {beta}")
+
+# Import initial parameters
+Parameters.from_yaml(args.input_parameters)
+
+# Select the selector
+Selector.set_selector(args.selector)
+
+# Create momentum
+momuntum = create_momentum(momentum_type=args.momentum, momentum=beta)
+initial_parameters = Parameters.get_parameters(bounds.keys()).copy()
+momuntum.set_initial_values(initial_parameters)
+
+# loads the variables and utilities
+TourUtility.read_and_init(files["tours"], 
+                          {"car": files["car"], "pt": files["pt"],"bike": files["bike"],
+                            "walk": files["walk"], "car_passenger": files["car_passenger"]}, 
+                          population_sample=population,
+                          eqasim_cache_dir = args.eqasim_cache_path)
+
+# define the Loss
+mode_shares_provider = ModeShares(args.eqasim_cache_path, overwrite=True)
+myLoss = Loss(mode_shares_provider, metric=args.metric,
+              objectives = args.objectives)
+
 for i in range(3):
-    args.max_evals = 2000    
-    args.input_parameters = '/home/dabdelkader/Work/Codes/Simulation_ch0p1/60.optimized_parameters.yml'
-    args.calibrate_global_modeshare = True
-    args.calibrate_modeshare_distribution = True
-    args.metric = "js"
-    args.distributions = ["distance", "car_distance", "walk_distance",
-                          "pt_distance","bike_distance"]
-    
-    # Get the files
-    files    = get_files(args)
-    # get beta and populatio sample
-    beta, population = get_beta_and_population(args)
-    
-    logger.info(f"[DEBUG] iter{args.iteration}: Population sample used for optimization: {population}")
-    logger.info(f"[DEBUG] iter{args.iteration}: Beta momentum used for updating parameters: {beta}")
-    # Import initial parameters
-    Parameters.from_yaml(args.input_parameters)
-    # Select the selector
-    Selector.set_selector(args.selector)
-    # Create momentum
-    momuntum = create_momentum(momentum_type=args.momentum, momentum=beta)
-    initial_parameters = Parameters.get_parameters(bounds.keys()).copy()
-    momuntum.set_initial_values(initial_parameters)
-    
-    # define the Loss
-    mode_shares_provider = ModeShares(args.eqasim_cache_path, overwrite=True)
-    myLoss = Loss(mode_shares_provider, metric=args.metric,
-                  calibrate_global_modeshare = args.calibrate_global_modeshare,
-                  calibrate_modeshare_distribution =args.calibrate_modeshare_distribution,
-                  distributions = args.distributions)
-        
-    # loads the variables and utilities
-    TourUtility.read_and_init(files["tours"], 
-                              {"car": files["car"], "pt": files["pt"],"bike": files["bike"],
-                                "walk": files["walk"], "car_passenger": files["car_passenger"]}, 
-                              population_sample=population,
-                              eqasim_cache_dir = args.eqasim_cache_path)
-            
-    
+    Parameters.from_yaml(args.input_parameters) #just to restart parameters
+    Selector.gumble = None
     ########## Optimize ###########
     optimizer = get_optimizer(args,  objective_function=myLoss)
     
@@ -117,18 +126,27 @@ for i in range(3):
         y = l[:,i]
         x = range(len(y))
         ax[0].scatter(x,y, label = param, s=10)
-    
+        
     ax[1].scatter(range(len(o)), o, s=10)
-    ax[1].set_ylim([0.6*min(o),10*min(o)])
-    ax[1].text(len(o) * 0.8, min(o)*7, f"Min: {min(o):.3f}", fontsize=15)
     
-    ax[0].legend(ncols=3, loc='upper center',bbox_to_anchor=(0.5, 1.2),  frameon=False)
+    # ax[0].set_ylim([0,1])    
+    low, high = sorted([min(o), max(o)])
+    # ax[1].set_ylim([low, high])
+    ax[1].text(len(o) * 0.8, (high+low)/2, f"Min: {min(o):.3f}", fontsize=15)
+    
+    ax[0].legend(ncols=int(np.ceil(l.shape[1]/2)), loc='upper center',bbox_to_anchor=(0.5, 1.2),  frameon=False)
     plt.show()
 
 
 
 
-
+# ['car.alpha_u',
+#  'walk.alpha_u',
+#  'bike.alpha_u',
+#  'car.betaTravelTime_u_min',
+#  'walk.betaTravelTime_u_min',
+#  'bike.betaTravelTime_u_min',
+#  'pt.betaInVehicleTime_u_min']
 
 
 if False:
@@ -140,12 +158,12 @@ if False:
     import numpy as np
     
     by = "distance"
-    x,y = myLoss.get_estimated_mode_shares()
-    xt, yt = myLoss.get_actual_mode_shares()
+    y = myLoss.get_estimated_mode_shares()
+    yt = myLoss.get_actual_mode_shares()
     
     y, yt = y[by], yt[by]
     
-    if by=="distance":
+    if "distance" in by:
         distance_bins = np.array(myLoss.distance_bins)
         distance = (distance_bins[1:]+distance_bins[:-1])/2
         distance[-1] = distance_bins[-2]

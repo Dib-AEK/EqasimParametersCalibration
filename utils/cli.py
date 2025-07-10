@@ -9,8 +9,8 @@ Created on Fri May 30 16:47:46 2025
 
 import argparse
 import warnings
-from Optimizer.PopulationFactor import PopulationFactor
-from Optimizer.BetaRateRise import BetaRateRise
+from MomentumAndDecay.PopulationFactor import PopulationFactor
+from MomentumAndDecay.BetaRateRise import BetaRateRise
 from utils.utils import parse_dict
 import logging
 logger = logging.getLogger(__name__)
@@ -45,11 +45,16 @@ def parse_args() -> argparse.Namespace:
                         help="Iteration number to read simulation files from.")        
     
     parser.add_argument("--bounds", type=str,
-                        default="""car.alpha_u:2.0,
-                                   walk.alpha_u:2.0,
-                                   bike.alpha_u:2.0,
-                                   car.betaTravelTime_u_min:2.0,
-                                   walk.betaTravelTime_u_min:2.0 """,
+                        default="""car.alpha_u:1.0,
+                                   walk.alpha_u:1.0,
+                                   bike.alpha_u:1.0,
+                                   car.betaTravelTime_u_min:0.5,
+                                   walk.betaTravelTime_u_min:0.5,
+                                   bike.betaTravelTime_u_min:0.5,
+                                   pt.betaInVehicleTime_u_min:0.5,
+                                   swissCar.betaStatedPreferenceRegion1_u:0.5,
+                                   swissCar.betaStatedPreferenceRegion3_u:0.5
+                                   """,
                         help="Parameter bounds as comma-separated key:value pairs")
     
     parser.add_argument("--metric", type=str, default="js",
@@ -60,7 +65,7 @@ def parse_args() -> argparse.Namespace:
                         choices=["ga", "pso", "random", "bayesian", "tpe", "cmaes", "spsa", "adam",
                                  'Nelder-Mead', 'Powell', 'CG', 'BFGS', 'Newton-CG', 'L-BFGS-B',
                                  'TNC', 'COBYLA', 'COBYQA', 'SLSQP', 'trust-constr', 'dogleg',
-                                 'trust-ncg', 'trust-exact', 'trust-krylov', "kai"],
+                                 'trust-ncg', 'trust-exact', 'trust-krylov', 'dual_annealing', "kai"],
                         help="Optimization algorithm to use")
     
     parser.add_argument("--momentum", type=str, default="ema", choices=["ema", "adam"],

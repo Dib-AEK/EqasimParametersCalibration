@@ -7,7 +7,9 @@ Created on Thu May 22 14:07:21 2025
 """
 from Optimizer.Optimizer import Optimizer
 from Utilities.BaseUtility import BaseUtility
+import os
 import numpy as np
+import pickle 
 import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -23,19 +25,23 @@ scipy_methods = [ 'Nelder-Mead','Powell', 'CG',  'BFGS', 'Newton-CG','L-BFGS-B',
 def register_optimizer(name):
     def decorator(cls):
         if name.lower()=="scipy":
-            for method in scipy_methods:
-                cls.method = method
-                _optimizer_registry["method"] = cls
+            for method in scipy_methods:                
+                _optimizer_registry[method.lower()] = cls
         else:
             _optimizer_registry[name.lower()] = cls
         return cls
     return decorator
 
 def get_optimizer(parsed_args, *args, **kwargs) -> Optimizer:
-    method=parsed_args.optimizer
+    method=parsed_args.optimizer    
     if method.lower() not in _optimizer_registry:
         raise ValueError(f"Unsupported optimizer: {method}. Supported: {_optimizer_registry.keys()}")
-    return _optimizer_registry[method.lower()](parsed_args, *args, **kwargs)
+    
+    optimizer = _optimizer_registry[method.lower()](parsed_args, *args, **kwargs)
+    if method in scipy_methods:
+        optimizer.set_method(method)
+        
+    return optimizer
 
 
 
@@ -93,21 +99,6 @@ class TPEOptimizer(Optimizer):
                     trials=trials, show_progressbar = False, verbose = False)
         return {"params": best, "loss": trials.best_trial['result']['loss']}
 
-
-@register_optimizer("scipy")
-class ScipyOptimizer(Optimizer):
-    method = 'Nelder-Mead'
-    def optimize(self):
-        from scipy.optimize import minimize
-
-        logger.info(f"Running {ScipyOptimizer.method} Optimization...")
-        x0 = [v for k,v in self.initial_values.items()]
-        res = minimize(self._objective, 
-                       x0=x0, 
-                       bounds=list(zip(self.lb, self.ub)),
-                       method=ScipyOptimizer.method)
-        return {"params": dict(zip(self.param_names, res.x)), "loss": res.fun}
-    
     
 @register_optimizer("pso")
 class PSOOptimizer(Optimizer):
@@ -173,7 +164,7 @@ class GAOptimizer(Optimizer):
         toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=1, indpb=0.1)
         toolbox.register("select", tools.selTournament, tournsize=3)
 
-        pop = toolbox.population(n=20)
+        pop = toolbox.population(n=24)
         hof = tools.HallOfFame(1)
         stats = tools.Statistics(lambda ind: ind.fitness.values[0])
         stats.register("avg", np.mean)
@@ -299,10 +290,7 @@ class KaiOptimizer(Optimizer):
         
         for i in range(max_iter):
             # Simulate only once per iteration
-            if i==0:
-                simulated_mode_shares,_ = self.get_eqasim_mode_shares(modes) # less expensive, and available for first iteration
-            else:
-                simulated_mode_shares,_ = self.get_estimated_mode_shares(modes)            
+            simulated_mode_shares,_ = self.get_estimated_mode_shares(modes)            
             
             # Check convergence by comparing with previous mode shares
             if prev_mode_shares is not None:
@@ -365,59 +353,113 @@ class KaiOptimizer(Optimizer):
         return reference_mode
     
     
-    
+
+@register_optimizer("scipy")
+class ScipyOptimizer(Optimizer):
+    method = 'Nelder-Mead'
+    def set_method(self, method):
+        ScipyOptimizer.method = method
+        
+    def optimize(self):
+        from scipy.optimize import minimize
+
+        logger.info(f"Running {ScipyOptimizer.method} Optimization...")
+        x0 = [v for k,v in self.initial_values.items()]
+        res = minimize(self._objective, 
+                       x0=x0, 
+                       bounds=list(zip(self.lb, self.ub)),
+                       method=ScipyOptimizer.method)
+        return {"params": dict(zip(self.param_names, res.x)), "loss": res.fun}
+        
+
+@register_optimizer("dual_annealing")
+class ScipyOptimizer(Optimizer):       
+    def optimize(self):
+        from scipy.optimize import dual_annealing
+
+        logger.info(f"Running dual_annealing Optimization...")        
+        res = dual_annealing(self._objective,                        
+                             bounds=list(zip(self.lb, self.ub)),
+                             maxfun = self.max_evals)
+        
+        return {"params": dict(zip(self.param_names, res.x)), "loss": res.fun}
+
 
 @register_optimizer("cmaes")
 class CMAESOptimizer(Optimizer):
-    def optimize(self):
-        import cma
-        from scipy.stats.qmc import Sobol
+    
+    def get_cmaes_optimizer(self, scaler, back_scaler, lb, ub):
+        # the file where the cached optimizer might be stored
+        filename = self.cache_file
+        if os.path.exists(filename):
+            logger.info("    Optimizer is loaded from cache")
+            es = self.load_cmaes_optimizer()
+            es.sigma = max(es.sigma, 1e-1)
+            if not len(es.mean)==len(lb):
+                logger.info("    Optimizer dimension mismatch, creating new optimizer")
+                os.remove(filename)
+                return self.get_cmaes_optimizer(scaler, back_scaler, lb, ub)
+        else:
+            import cma        
+            x0 = np.array([v for k,v in self.initial_values.items()])
+            x0_scaled = scaler(x0)   
+            
+            sigma = 0.333
+            num_param = len(self.param_names)
+            popsize = int(4+10*np.ceil(np.log(num_param)))
+            logger.info(f"    Population size is set to {popsize}")
+            
+            #Now, use CMA-ES optimization
+            options = cma.CMAOptions()
+            options.set("bounds", [np.zeros_like(lb), np.ones_like(lb)])
+            options.set("maxfevals", self.max_evals)        
+            options.set("popsize", popsize)
+            es = cma.CMAEvolutionStrategy(x0_scaled, sigma, options)  
         
+        return es
+    
+    def load_cmaes_optimizer(self):        
+        return pickle.load(open(self.cache_file, 'rb'))        
+        
+    def save_cmaes_model(self, es):        
+        open(self.cache_file, 'wb').write(es.pickle_dumps())
+        
+    def optimize(self):        
+                       
         logger.info("Running CMA-ES Optimization...")
-        
+
         # Convert bounds to arrays and define scaling functions
         lb, ub = np.array(self.lb), np.array(self.ub)
-        def scaler(x):
-            return (x - lb) / (ub - lb)
-        def back_scaler(x):
-            return x * (ub - lb) + lb
-    
-        x0 = np.array([v for k,v in self.initial_values.items()])
-        x0_scaled = scaler(x0)
-        
-        sigma = 0.3
-        popsize = int(4+6*np.ceil(np.log(len(lb))))
-        
-        options = cma.CMAOptions()
-        options.set("bounds", [np.zeros_like(lb), np.ones_like(lb)])
-        options.set("maxfevals", self.max_evals)        
-        options.set("popsize", popsize)
-        
-        es = cma.CMAEvolutionStrategy(x0_scaled, sigma, options)
+        scaler = lambda x: (x - lb) / (ub - lb)
+        back_scaler = lambda x: x * (ub - lb) + lb
+         
+        es = self.get_cmaes_optimizer(scaler, back_scaler, lb, ub)             
+        min_num_iterations = int(1000/es.popsize) #I think 500 evalution would be enough
         iteration = 0
-        while not es.stop():
-            if iteration==0:
-                # popsize = min(es.popsize * len(lb), 
-                #               es.popsize * 5)
-                # sobol_engine = Sobol(d=len(lb), scramble=True)
-                # sobol_samples = sobol_engine.random(n=popsize)
-                # solutions = np.clip(sobol_samples, 0.0, 1.0)                 
-                solutions = es.ask()  
-                objectives = [self._objective(back_scaler(sol)) for sol in solutions]            
-                es.inject(solutions, objectives)
-            else:
-                solutions = es.ask()                                            
-                objectives = [self._objective(back_scaler(sol)) for sol in solutions]            
-                es.tell(solutions, objectives)
-            
-            self.explored_solutions.extend(solutions)
-            self.explored_objectives.extend(objectives)
-            
-            es.disp()
+        stop = False
+        while not stop:
+            solutions = es.ask()                                           
+            objectives = [self._objective(back_scaler(sol), sol) for sol in solutions]                        
+            es.tell(solutions, objectives)                        
+            es.disp()    
             iteration +=1
+            stop = False if (iteration<min_num_iterations) else es.stop()
         
         xbest = back_scaler(es.result.xbest)
-        
+        self.save_cmaes_model(es)
         return {"params": dict(zip(self.param_names, xbest)), "loss": es.result.fbest}
     
+
+
     
+
+
+
+
+
+
+
+
+
+
+

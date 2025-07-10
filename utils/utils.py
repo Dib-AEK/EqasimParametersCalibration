@@ -8,8 +8,8 @@ Created on Fri May 30 16:42:45 2025
 
 from typing import Dict
 import os
-from Optimizer.BetaRateRise import BetaRateRise
-from Optimizer.PopulationFactor import PopulationFactor
+from MomentumAndDecay.BetaRateRise import BetaRateRise
+from MomentumAndDecay.PopulationFactor import PopulationFactor
 
 
 

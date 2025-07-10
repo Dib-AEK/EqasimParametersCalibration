@@ -30,6 +30,7 @@ class Optimizer(ABC):
         self.objective_function = objective_function
         self.bounds = args.bounds
         self.max_evals = args.max_evals
+        self.cache_file = ".cache/optimizer_progresssion.p"
         self.args = args
         
         # Get initial values from BaseUtility
@@ -52,10 +53,18 @@ class Optimizer(ABC):
         """
         pass
 
-    def _objective(self, paramaters: list) -> float:
-        """Objective function wrapper"""
-        param_dict = dict(zip(self.param_names, paramaters))
-        return self.objective_function.get_loss(param_dict)
+    def _objective(self, parameters: list, scaled_params:list=None) -> float:
+        """Objective function wrapper"""        
+        param_dict = dict(zip(self.param_names, parameters))
+        loss = float(self.objective_function.get_loss(param_dict))
+        
+        if scaled_params is None:
+            self.explored_solutions.append(list(parameters))
+        else:
+            self.explored_solutions.append(list(scaled_params))
+            
+        self.explored_objectives.append(loss)
+        return loss
 
     def get_actual_mode_shares(self, modes=None):
         return self.objective_function.get_actual_mode_shares(modes)

@@ -10,7 +10,7 @@ import json
 import numpy as np
 from typing import Dict, Optional, Any, Type
 from abc import ABC, abstractmethod
-from Optimizer.Momentum import MomentumBase
+from MomentumAndDecay.Momentum import MomentumBase
 
 
 def create_momentum(momentum_type: str, *args, **kwargs) -> MomentumBase:
