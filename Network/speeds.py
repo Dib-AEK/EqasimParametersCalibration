@@ -31,14 +31,35 @@ class SpeedCalculator:
     
     def __init__(self, network=None, graph = None, link_stats_file=None, fit_vdf=True):
         self.network = network
-        self.link_stats = pd.read_csv(link_stats_file) if link_stats_file else None
-        self.graph = graph if graph is not None else self.network.as_networkx()
+        self.link_stats = pd.read_csv(link_stats_file, sep="\t") if link_stats_file else None
+        self.link_stats = self.clean_link_stats(self.link_stats)
         
+        self.graph = graph if graph is not None else self.network.as_igraph()        
+        
+        # Parameters of the BPR function for vdf
         self.alpha, self.beta = 0.15, 4.0  # Default values for alpha and beta in the VDF
 
         if self.network and self.link_stats is not None and fit_vdf:
             self.fit_vdf()        
-            
+         
+    def clean_link_stats(self, df):        
+        cols = ["LINK","LENGTH","FREESPEED","CAPACITY",
+                *[f"HRS{i}-{i+1}avg" for i in range(24)],
+                *[f"TRAVELTIME{i}-{i+1}avg" for i in range(24)]]        
+        new_cols = [col.lower() for col in cols]
+        cols_rename = dict(zip(cols,new_cols))
+        
+        df = df[cols].rename(columns=cols_rename)
+        df = df.rename(columns={"link":"link_id"})
+        df = df.astype({'link_id':'str',
+                        'length':float,
+                        'freespeed':float,
+                        'capacity':float})
+        # keep only links that are in the network file
+        df = df[df.link_id.isin(self.network.links.link_id.unique())].reset_index(drop=True)
+        return df
+        
+        
     
     def set_speed(self, G, df):
         """
@@ -104,17 +125,21 @@ class SpeedCalculator:
         
         # Prepare DataFrame with necessary columns
         df = self.link_stats.copy()
-        df["free_travel_time"] = df["LENGTH"] / df["FREESPEED"]
-        df = df.rename(columns={"LINK_ID": "link_id", "FREESPEED": "freespeed", "LENGTH": "length", "CAPACITY": "capacity"})
+        df["free_travel_time"] = df["length"] / df["freespeed"]
         
-        travel_time_cols = [col for col in df.columns if 'travel_time' in col]
-        volume_cols = [col for col in df.columns if 'HRS' in col]
+        travel_time_cols = [f"traveltime{i}-{i+1}avg" for i in range(24)]
+        volume_cols = [f"hrs{i}-{i+1}avg" for i in range(24)]
     
-
-        travel_times = pd.concat([df[['link_id',col]].rename(columns={col:'travel_time'}) for col in travel_time_cols], axis=1)
-        volumes = pd.concat([df[['link_id',col]].rename(columns={col:'volumne'})  for col in volume_cols], axis=1)
+        travel_times = pd.concat([df[['link_id',col]].rename(columns={col:'travel_time'}) for col in travel_time_cols])
+        volumes = pd.concat([df[['link_id',col]].rename(columns={col:'volume'})  for col in volume_cols])
+         
+        keep = (volumes.volume>0)&(travel_times.travel_time>0)&(travel_times.travel_time<600)
+        travel_times = travel_times[keep]
+        volumes = volumes[keep]
+        
+        # Merge everything
         df = (pd.merge(travel_times, volumes, on='link_id', how='left')
-                .merge(df[['link_id', 'freespeed', 'length', 'capacity', 'free_travel_time']], on='LINK_ID', how='left'))
+                .merge(df[['link_id', 'freespeed', 'length', 'capacity', 'free_travel_time']], on='link_id', how='left'))
         
         # Optimize alpha and beta using least squares
         from scipy.optimize import minimize
