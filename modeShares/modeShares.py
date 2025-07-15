@@ -44,9 +44,11 @@ class ModeShares:
             self.trips, self.transit = self._load_data()
             
             self.distance_labels = ['0-(0km-1km)', '1-(1km-2km)', '2-(2km-3km)',
-                                    '3-(3km-4km)','4-(4km-5km)', '5-(5km-8km)',
-                                    '6-(8km-12km)','7-(12km-20km)','8-(20km+)'] #)it should be like that for sorting later
-            self.distance_bins = [0, 1000, 2000, 3000, 4000, 5000, 8000, 12000, 20000, 1000000]
+                                    '3-(3km-4km)','4-(4km-5km)', '5-(5km-7km)',
+                                    '6-(7km-10km)','7-(10km-15km)','8-(15km-25km)',
+                                    '9-(50km+)'] #)it should be like that for sorting later
+            self.distance_bins = [0, 1000, 2000, 3000, 4000, 5000, 7500, 10000,
+                                  15000, 20000, 1000000]
             
             self.trips['distance_bin'] = pd.cut(self.trips['crowfly_distance'], 
                                                 bins=self.distance_bins, 

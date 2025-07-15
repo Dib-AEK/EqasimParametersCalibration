@@ -6,7 +6,7 @@ Created on Mon Jul  7 11:54:01 2025
 """
 
 import numpy as np
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.special import rel_entr
 from scipy.spatial.distance import jensenshannon
@@ -57,6 +57,9 @@ class Losses(ABC):
             return self.mse()
         elif metric == "mae":
             return self.mae()
+        elif metric == "mape":
+            return self.mape()
+        
         elif metric in {"cosine", "cosine_similarity"}:
             return self.cosine_similarity()
         elif metric in {"kl", "kl_divergence"}:
@@ -77,7 +80,10 @@ class Losses(ABC):
 
     def mae(self):
         return mean_absolute_error
-
+    
+    def mape(self):
+        mean_absolute_percentage_error
+    
     def cosine_similarity(self):
         return lambda x, y: cosine_similarity([x], [y])[0, 0]
         

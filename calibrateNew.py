@@ -11,6 +11,7 @@ import time
 import logging
 import datetime
 import matplotlib.pyplot as plt
+import seaborn as sns
 import numpy as np
 
 from utils.cli import parse_args
@@ -39,7 +40,7 @@ args = parse_args()
 bounds = args.bounds
 
 
-args.max_evals = 4000    
+args.max_evals = 10000    
 args.input_parameters = 'testsAndParams/modeChoiceParameters.yml'
 args.output_parameters = 'testsAndParams/modeChoiceOptimizedParameters.yml'
 args.variables_path = 'testsAndParams/it.120'
@@ -47,7 +48,7 @@ args.eqasim_cache_path = "Z:\ch-zh-synpop/cache10p100"
 args.iteration = 120
 args.optimizer = 'cmaes'
 args.metric = "mse"
-args.objectives = ["global","distance","mode_distance", "sp_region"]
+args.objectives = ["global","distance","mode_distance", "vot", "canton", "sp_region"]
     
 # Get the files
 files    = get_files(args)
@@ -81,9 +82,9 @@ mode_shares_provider = ModeShares(args.eqasim_cache_path, overwrite=True)
 myLoss = Loss(mode_shares_provider, metric=args.metric,
               objectives = args.objectives)
 
-for i in range(3):
+for i in range(10):
     Parameters.from_yaml(args.input_parameters) #just to restart parameters
-    Selector.gumble = None
+    # Selector.gumble = None
     ########## Optimize ###########
     optimizer = get_optimizer(args,  objective_function=myLoss)
     
@@ -102,7 +103,7 @@ for i in range(3):
     # #Save parameters
     # Parameters.to_yaml(args.output_parameters)
     # logger.info(f"[DEBUG] Optimized parameters saved to: {args.output_parameters}")
-    
+    Parameters.to_yaml(args.input_parameters.replace('.yml','_opt.yml'))
     
     # if __name__ == "__main__":
     #     main()
