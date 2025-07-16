@@ -130,25 +130,37 @@ class SpeedCalculator:
         travel_time_cols = [f"traveltime{i}-{i+1}avg" for i in range(24)]
         volume_cols = [f"hrs{i}-{i+1}avg" for i in range(24)]
     
-        travel_times = pd.concat([df[['link_id',col]].rename(columns={col:'travel_time'}) for col in travel_time_cols])
-        volumes = pd.concat([df[['link_id',col]].rename(columns={col:'volume'})  for col in volume_cols])
-         
-        keep = (volumes.volume>0)&(travel_times.travel_time>0)&(travel_times.travel_time<600)
-        travel_times = travel_times[keep]
-        volumes = volumes[keep]
+        df_t = pd.concat([df[['link_id',col]].rename(columns={col:'travel_time'}) for col in travel_time_cols])
+        df_t["volume"] = pd.concat([df[[col]].rename(columns={col:'volume'})  for col in volume_cols])
+        
+        # filter out freeflow links and highly congested links
+        keep = (df_t.volume>5)&(df_t.travel_time>3)&(df_t.travel_time<600)
+        df_t = df_t[keep]        
+        del keep
         
         # Merge everything
-        df = (pd.merge(travel_times, volumes, on='link_id', how='left')
-                .merge(df[['link_id', 'freespeed', 'length', 'capacity', 'free_travel_time']], on='link_id', how='left'))
+        df   = df[['link_id', 'freespeed', 'length', 'capacity', 'free_travel_time']]               
+        df   = df_t.merge(df, on='link_id', how='left')        
+        del df_t
+
+        # filter out small links
+        df = df[df.length>35]
+        
+        # filter out very small speeds and no congested points
+        actual_speed = (df["length"]/df['travel_time'])
+        df = df[(actual_speed>10/3.6)&(actual_speed<df.freespeed)].reset_index(drop=True)
         
         # Optimize alpha and beta using least squares
         from scipy.optimize import minimize
-        from sklearn.metrics import mean_squared_error
-
-        def loss(alpha, beta):
-            estimated_travel_time = df['free_travel_time'] * (1 + alpha * (df['volumne'] / df['capacity']) ** beta)
+        from sklearn.metrics import mean_squared_error, r2_score
+        
+        n_points = len(df)        
+        def loss(x):
+            alpha, beta = x
+            estimated_travel_time = df['free_travel_time'] * (1 + alpha * (df['volume'] / (df['capacity']*0.1)) ** beta)
             matsim_travel_time = df['travel_time']
-            return mean_squared_error(matsim_travel_time, estimated_travel_time)
+            return mean_squared_error(matsim_travel_time, 
+                                      estimated_travel_time)
         
         res = minimize(loss, 
                        x0=[self.alpha, self.beta], 

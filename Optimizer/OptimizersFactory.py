@@ -407,7 +407,7 @@ class CMAESOptimizer(Optimizer):
         x0 = np.array([v for k,v in self.initial_values.items()])
         x0_scaled = scaler(x0)   
         
-        sigma = 0.3
+        sigma = 0.333
         num_param = len(self.param_names)
         popsize = int(4+10*np.ceil(np.log(num_param)))
         logger.info(f"    Population size is set to {popsize}")

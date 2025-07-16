@@ -40,7 +40,7 @@ args = parse_args()
 bounds = args.bounds
 
 
-args.max_evals = 10000    
+args.max_evals = 4000    
 args.input_parameters = 'testsAndParams/modeChoiceParameters.yml'
 args.output_parameters = 'testsAndParams/modeChoiceOptimizedParameters.yml'
 args.variables_path = 'testsAndParams/it.120'
@@ -48,7 +48,7 @@ args.eqasim_cache_path = "Z:\ch-zh-synpop/cache10p100"
 args.iteration = 120
 args.optimizer = 'cmaes'
 args.metric = "mse"
-args.objectives = ["global","distance","mode_distance", "vot", "canton", "sp_region"]
+args.objectives = ["global","distance","mode_distance"]
     
 # Get the files
 files    = get_files(args)
@@ -82,7 +82,7 @@ mode_shares_provider = ModeShares(args.eqasim_cache_path, overwrite=True)
 myLoss = Loss(mode_shares_provider, metric=args.metric,
               objectives = args.objectives)
 
-for i in range(10):
+for i in range(3):
     Parameters.from_yaml(args.input_parameters) #just to restart parameters
     # Selector.gumble = None
     ########## Optimize ###########

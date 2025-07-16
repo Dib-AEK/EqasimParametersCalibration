@@ -29,12 +29,12 @@ POSSIBLE_OBJECTIVES = ["global","distance","canton","age","income","sp_region",
 ATTR_TO_COL = {"age":"age_class","income":'income_class',"canton":"canton_id",
                "distance":"distance", "sp_region":"sp_region"}
 
-WEIGHTS = {"global":1/0.6,"distance":1.0/1.0, "mode_distance":1/0.15,
+WEIGHTS = {"global":1.0,"distance":1.0, "mode_distance":1,
            "vot":1/0.8e6,
            "canton":0.5,"age":0.3,"income":0.5, "sp_region":1.0, 
             "mode_income":0.5,"mode_age":0.3,"mode_canton":0.5}
 
-WEIGHT_MODE = {"pt":1.0,"car":0.8,"walk":4.0,"bike":6.0,"car_passenger":1.0}#because walk and bike all zeros for long trips
+WEIGHT_MODE = {"pt":1.0,"car":1.0,"walk":2.0,"bike":2.0,"car_passenger":1.0}#because walk and bike all zeros for long trips
 
 SELECTED_MODE = {"sp_region":['car','pt']} #must be dict of list
 
@@ -213,10 +213,10 @@ class Loss(Losses):
             y = (estimated[sel_mode]*mode_weight[sel_mode]).flatten()
             k_loss = loss_func(x, y) #DO NOT APPLY LOG HERE
             
-            if "distance" in k:
+            if k=="distance":
                 # Add the loss of the first bin, it controls better the alphas
-                xd0 = (actual[:,:3]*mode_weight)[sel_mode].flatten()
-                yd0 = (estimated[:,:3]*mode_weight)[sel_mode].flatten()
+                xd0 = (actual[:,:1]*mode_weight)[sel_mode].flatten()
+                yd0 = (estimated[:,:1]*mode_weight)[sel_mode].flatten()
                 k_loss += loss_func(xd0, yd0)
                 
             self.losses_record[k].append(k_loss)
