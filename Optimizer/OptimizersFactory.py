@@ -460,9 +460,9 @@ class CMAESOptimizer(Optimizer):
         # Load the explored solutions and objectives
         self.load_explored_solutions_and_objectives()
         # resume the optimization from the last state
-        num_to_keep = int(np.floor(self.max_evals / es.popsize)*es.popsize)
-        self.explored_solutions = self.explored_solutions[-num_to_keep:]
-        self.explored_objectives = self.explored_objectives[-num_to_keep:]    
+        # num_to_keep = int(np.floor(self.max_evals / es.popsize)*es.popsize)
+        # self.explored_solutions = self.explored_solutions[-num_to_keep:]
+        # self.explored_objectives = self.explored_objectives[-num_to_keep:]    
 
         es.feed_for_resume(self.explored_solutions, self.explored_objectives)
         return es
