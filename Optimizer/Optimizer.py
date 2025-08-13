@@ -14,9 +14,10 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Callable
 from abc import ABC
 from functools import partial
+import os
+import json
 
-
-
+import matplotlib.pyplot as plt
 class Optimizer(ABC):
     def __init__(self, args, objective_function: Loss):
         """
@@ -30,13 +31,16 @@ class Optimizer(ABC):
         self.objective_function = objective_function
         self.bounds = args.bounds
         self.max_evals = args.max_evals
-        self.cache_file = ".cache/optimizer_progresssion.p"
+        self.cache_file = os.path.join(args.optimizer_cache, "optimizer_progression.p")
+        self.cache_solution_file = os.path.join(args.optimizer_cache, "optimizer_explored_solutions.json")
         self.args = args
-        
+
+        self.image_path = os.path.join(args.optimizer_cache, f"{args.iteration}.optimizer_progression.png")
         # Get initial values from BaseUtility
         self.param_names = list(self.bounds.keys())
-        self.initial_values = BaseUtility.get_parameters(self.param_names)        
-        # Convert percentage bounds to absolute bounds
+        self.initial_values = BaseUtility.get_parameters(self.param_names)
+
+        # Convert relative bounds to absolute bounds
         self.lb = [self.initial_values[p] - self.bounds[p] for p in self.param_names]
         self.ub = [self.initial_values[p] + self.bounds[p] for p in self.param_names]
         
@@ -81,17 +85,47 @@ class Optimizer(ABC):
         else:
             return []
 
+    def save_explored_solutions_and_objectives(self):
+        data = dict(explored_solutions = self.explored_solutions,
+                    explored_objectives = self.explored_objectives)
+        file_path = self.cache_solution_file
+        # save it as json file
+        with open(file_path, "w") as f:
+            json.dump(data, f)
 
+    def load_explored_solutions_and_objectives(self):
+        file_path = self.cache_solution_file
+        if os.path.exists(file_path):
+            with open(file_path, "r") as f:
+                data = json.load(f)
+            self.explored_solutions = data.get("explored_solutions", [])
+            self.explored_objectives = data.get("explored_objectives", [])
 
+    def plot(self):
+        l = self.explored_solutions
+        l = [list(li) for li in l]
+        l = np.array(l)
+        o = self.explored_objectives
+        
+        fig, ax = plt.subplots(2,1,figsize=(12,8))
+        ax[0].grid(alpha=0.3)
+        ax[1].grid(alpha=0.3)
+        
+        for i,param in enumerate(self.param_names):
+            y = l[:,i]
+            x = range(len(y))
+            ax[0].scatter(x,y, label = param, s=10)
+            
+        ax[1].scatter(range(len(o)), o, s=10)
+                
+        low, high = sorted([min(o), max(o)])        
+        ax[1].text(len(o) * 0.8, (high+low)/2, f"Min: {min(o):.3f}", fontsize=15)
+        
+        ax[0].legend(ncols=int(np.ceil(l.shape[1]/2)), loc='upper center',bbox_to_anchor=(0.5, 1.2),  frameon=False)
 
-
-
-
-
-
-
-
-
+        if self.image_path is not None:
+            plt.savefig(self.image_path, bbox_inches='tight', dpi=300)
+        plt.close()
 
 
 

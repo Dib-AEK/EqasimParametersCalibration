@@ -45,61 +45,23 @@ class ExponentialMovingAverage(MomentumBase):
     """
     def __init__(
         self,
-        cache_path: str = "./calibrationCache/ema_cache.json",
+        cache_path: str = "calibrationCache",
         momentum: Optional[float] = None
     ):
         super().__init__(cache_path)
         
         # Default hyperparameters
-        self.default_hyperparams = {
-            "momentum": 0.9
-        }
+        self.default_hyperparams = {"momentum": 0.9}
         
         # Initialize hyperparameters
-        self.hyperparams = {
-            "momentum": momentum if momentum is not None else 
-                        self.default_hyperparams["momentum"]
-        }
-        self.param_keys = []
-        
-        self.smoothed_values = np.array([])
-        self.initial_values = np.array([])
-        self.optimal_values = np.array([])
+        self.hyperparams = self.default_hyperparams.copy()
+
         # Load previous state if exists
         self._load_cache()
-    
-    def _load_cache(self) -> None:
-        """Load smoother state from disk."""        
-        
-        if os.path.exists(self.cache_path) and os.path.getsize(self.cache_path) > 0:
-            try:
-                with open(self.cache_path, 'r') as f:
-                    data = json.load(f)
-                    self.param_keys = data.get("param_keys", [])
-                    self.hyperparams = data.get("hyperparams", self.hyperparams)
-            except Exception as e:
-                print(f"[Warning] Failed to load cache: {e}")
-                
-    
-    def _save_cache(self) -> None:
-        """Save current state to disk."""
-        data = {
-            "param_keys": self.param_keys,            
-            "hyperparams": self.hyperparams
-        }
-        
-        os.makedirs(os.path.dirname(self.cache_path), exist_ok=True)
-        
-        with open(self.cache_path, 'w') as f:
-            json.dump(data, f, indent=2)
-    
-    def _reset_state(self) -> None:
-        """Reset internal state."""
-        self.param_keys = []
-        self.hyperparams = self.default_hyperparams.copy()
-        self.smoothed_values = np.array([])
-        self.initial_values = np.array([])
-        self.optimal_values = np.array([])
+
+        # if it is provided, overwrite it
+        if momentum is not None:
+            self.hyperparams["momentum"] = momentum
     
     def _update_smoother(self) -> None:
         """
@@ -113,8 +75,10 @@ class ExponentialMovingAverage(MomentumBase):
         if len(self.initial_values) and len(self.initial_values)==len(self.optimal_values):
             beta = self.hyperparams["momentum"]
             self.smoothed_values = beta * self.initial_values + (1 - beta) * self.optimal_values
-            
-            self._save_cache() #don't need it for now, maybe later
+
+            #don't need it for now, maybe later
+            self.state["last_iteration_values"] = self.smoothed_values
+            self._save_cache()
         else:
             raise ValueError(f"Either initial values or optimal values are not set!")
         
@@ -127,7 +91,7 @@ class AdamMomentum(MomentumBase):
     """
     def __init__(
         self,
-        cache_path: str = "./calibrationCache/adam_cache.json",
+        cache_path: str = "calibrationCache",
         beta1: Optional[float] = None,
         beta2: Optional[float] = None,
         epsilon: Optional[float] = None,
@@ -143,62 +107,55 @@ class AdamMomentum(MomentumBase):
             "learning_rate": 0.5
         }
         
-        # Initialize hyperparameters
-        self.hyperparams = {
-            "beta1": beta1 if beta1 is not None else self.default_hyperparams["beta1"],
-            "beta2": beta2 if beta2 is not None else self.default_hyperparams["beta2"],
-            "epsilon": epsilon if epsilon is not None else self.default_hyperparams["epsilon"],
-            "learning_rate": learning_rate if learning_rate is not None else 
-                              self.default_hyperparams["learning_rate"]
-        }
-        
-        # Internal state
-        self.t = 0  # Time step counter
-        self.m = None  # First moment estimate
-        self.v = None  # Second moment estimate
-        
-        # Load previous state if exists
-        self._load_cache()
-    
-    def _load_cache(self) -> None:
-        """Load optimizer state from disk."""        
-        
-        if os.path.exists(self.cache_path):
-            try:
-                with open(self.cache_path, 'r') as f:
-                    data = json.load(f)
-                    self.t = data.get("t", 0)
-                    self.m = np.array(data["m"], dtype=np.float64) if "m" in data else None
-                    self.v = np.array(data["v"], dtype=np.float64) if "v" in data else None
-                    self.param_keys = data.get("param_keys", [])
-                    self.hyperparams = data.get("hyperparams", self.hyperparams)
-            except Exception as e:
-                print(f"[Warning] Failed to load cache: {e}")
-                
-    
-    def _save_cache(self) -> None:
-        """Save current state to disk."""
-        data = {
-            "t": self.t,
-            "m": self.m.tolist() if self.m is not None else [],
-            "v": self.v.tolist() if self.v is not None else [],
-            "param_keys": self.param_keys,            
-            "hyperparams": self.hyperparams
-        }
-        
-        os.makedirs(os.path.dirname(self.cache_path), exist_ok=True)
-        
-        with open(self.cache_path, 'w') as f:
-            json.dump(data, f, indent=2)
-    
-    def _reset_state(self) -> None:
-        """Reset internal state."""
-        self.t = 0
-        self.m = None
-        self.v = None
-        self.param_keys = []        
+        # Initialize hyperparams with defaults first
         self.hyperparams = self.default_hyperparams.copy()
+        self.state = dict(t=0, m=None, v=None)
+
+        # Load previous state if exists (may update hyperparams and state)
+        self._load_cache()
+
+        # Overwrite hyperparams if provided
+        if beta1 is not None:
+            self.hyperparams["beta1"] = beta1
+        if beta2 is not None:
+            self.hyperparams["beta2"] = beta2
+        if epsilon is not None:
+            self.hyperparams["epsilon"] = epsilon
+        if learning_rate is not None:
+            self.hyperparams["learning_rate"] = learning_rate
+
+        # Ensure state keys exist (in case cache didn't have them)
+        if "t" not in self.state:
+            self.state["t"] = 0
+        if "m" not in self.state:
+            self.state["m"] = None
+        if "v" not in self.state:
+            self.state["v"] = None
     
+    @property
+    def t(self):
+        return self.state["t"]
+
+    @t.setter
+    def t(self, value):
+        self.state["t"] = value
+
+    @property
+    def m(self):
+        return self.state["m"]
+
+    @m.setter
+    def m(self, value):
+        self.state["m"] = value
+
+    @property
+    def v(self):
+        return self.state["v"]
+
+    @v.setter
+    def v(self, value):
+        self.state["v"] = value
+ 
     def _update_smoother(self) -> None:
         """
         Update the Adam state with new parameter values.

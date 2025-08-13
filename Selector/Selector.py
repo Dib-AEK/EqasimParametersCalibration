@@ -25,7 +25,7 @@ class Selector():
             return Selector._multinomial_logit_selection_polars(tours)
             
         elif Selector.selector == "Maximum":
-            return Selector._maximum_utility_selection(tours)
+            return Selector._maximum_utility_selection_polars(tours)
         else:
             raise ValueError(f"Unknown selector: {Selector.selector}")
 
@@ -82,9 +82,9 @@ class Selector():
         if Selector.considerMinimumUtility:
             df = df.filter(pl.col("utility") > Selector.minimum_utility)
         
-        if Selector.gumble is None:
+        if Selector.gumble is None: # only the first time
             Selector.gumble = pl.lit(np.random.gumbel(size=df.height))
-        # gumble = pl.lit(np.random.gumbel(size=df.height))
+        
         # Clip utility and add Gumbel noise in a single with_columns call
         df = df.with_columns([
             pl.col("utility").clip(upper_bound=Selector.maximum_utility).alias("utility"),
@@ -103,9 +103,25 @@ class Selector():
        )
 
     @staticmethod
+    def _maximum_utility_selection_polars(df:pl.DataFrame)-> pl.DataFrame:
+        return (
+            df.with_columns(
+                pl.col("utility")
+                    .rank(method="ordinal", descending=True)
+                    .over("selection_id")
+                    .alias("rn")
+            )
+            .filter(pl.col("rn") == 1)
+            .drop(["rn"])
+        )
+
+    @staticmethod
     def set_selector(selector:str):
+        if selector not in ["MultinomialLogit", "Maximum"]:
+            raise ValueError(f"Unknown selector: {selector}")
         Selector.selector = selector
     
     @staticmethod
-    def get_selector(selector:str):
+    def get_selector()->str:
         return Selector.selector
+

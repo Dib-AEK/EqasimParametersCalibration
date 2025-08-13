@@ -14,10 +14,11 @@ from typing import Optional
 import matplotlib.pyplot as plt
 import numpy as np
 import modeShares.utils as U
+from modeShares.ModeShares import ModeShares
 
-
-class ModeShares:
-    def __init__(self, eqasim_cache_dir: str, cache_dir: str = "./calibrationCache", overwrite: bool = False):
+class ChModeShares(ModeShares):
+    def __init__(self, eqasim_cache_dir: str, cache_dir: str = "calibrationCache", 
+                 overwrite: bool = False, distance_bins = None):
         self.eqasim_cache_dir = eqasim_cache_dir
         self.cache_dir = cache_dir
         self.overwrite = overwrite
@@ -32,7 +33,7 @@ class ModeShares:
         self.distance_labels = []
         self.distance_bins = []
 
-        # Generate cache file name using deterministic hash
+        # Generate cache file name using deterministic hash (if data changed)
         hash_key = hashlib.sha256(self.eqasim_cache_dir.encode()).hexdigest()
         self.cache_file = os.path.join(self.cache_dir, f"modeShare_{hash_key}.json")
 
@@ -43,11 +44,15 @@ class ModeShares:
             self._setup_files()
             self.trips, self.transit = self._load_data()
             
-            self.distance_labels = ['0-(0km-1km)', '1-(1km-2km)', '2-(2km-3km)',
-                                    '3-(3km-4km)','4-(4km-5km)', '5-(5km-10km)',
-                                    '6-(10km-20km)','7-(20km+)'] #)it should be like that for sorting later
-            self.distance_bins = [0, 1000, 2000, 3000, 4000, 5000, 10000,
-                                   20000, 1000000]
+            self.distance_bins = distance_bins if distance_bins is not None else \
+                                [0, 1000, 2000, 3000, 4000, 5000, 10000, 20000, 1000000]
+            
+            self.distance_labels = [
+                f"{i}-({self.distance_bins[i]//1000}km-{self.distance_bins[i+1]//1000}km)"
+                if self.distance_bins[i+1] < self.distance_bins[-1]
+                else f"{i}-({self.distance_bins[i]//1000}km+)"
+                for i in range(len(self.distance_bins)-1)
+            ]
             
             self.trips['distance_bin'] = pd.cut(self.trips['crowfly_distance'], 
                                                 bins=self.distance_bins, 
@@ -75,7 +80,7 @@ class ModeShares:
         assert len(self.mode_shares["distance"]["car"])==len(self.mode_shares["mode_distance"]["car"])==len(self.distance_labels)
         
     def _setup_files(self):
-        """Automatically find latest trips and persons files."""
+        """Automatically find latest trips, persons, and transit files."""
         trips_files = glob.glob(os.path.join(self.eqasim_cache_dir, "**", "*data.microcensus.trips*.p"), recursive=True)
         persons_files = glob.glob(os.path.join(self.eqasim_cache_dir, "**", "*data.microcensus.persons*.p"), recursive=True)
         transit_files = glob.glob(os.path.join(self.eqasim_cache_dir, "**", "*data.microcensus.transit*.p"), recursive=True)
@@ -126,8 +131,8 @@ class ModeShares:
         )
         mode_share_person['mode_share'] /= total_person_weight
         mode_share_person = mode_share_person.set_index("mode").to_dict()["mode_share"]
-        mode_share_person = {k:[v,] for k,v in mode_share_person.items()}
-        #I transform them into lists so that everything is consistent
+        #I transform them into lists so that everything is consistent (with distributions)
+        mode_share_person = {k:[v,] for k,v in mode_share_person.items()}        
         return mode_share_person
 
     def _get_mode_shares_by(self, by = "canton_id"):
@@ -162,6 +167,11 @@ class ModeShares:
                     
     
     def _get_transit_distributions(self):
+        """
+        This method calculate the distribution of in vehicle time, line switches, waiting time, and access egress time for public transport trips 
+        by distance bin. Before getting these distributions, the data is filtered by removing outliers using the interquartile range. This can be 
+        seen in detail in the U.clean_and_weighted_avg function.
+        """
         cols = ["person_id","trip_id","distance_bin","person_weight"]
         sel  = self.trips["mode"]=="pt"
         df = self.transit.merge(self.trips.loc[sel,cols], on=["person_id","trip_id"], how="left")

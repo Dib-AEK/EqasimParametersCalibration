@@ -15,7 +15,7 @@ from scipy.spatial.distance import jensenshannon
 from Utilities.TourUtility import TourUtility
 from Selector.Selector import Selector
 from Utilities.BaseUtility import BaseUtility
-from modeShares.modeShares import ModeShares
+from modeShares.ModeShares import ModeShares
 import time
 import polars as pl
 from Loss.Losses import Losses
@@ -27,16 +27,16 @@ POSSIBLE_OBJECTIVES = ["global","distance","canton","age","income","sp_region",
                        "mode_distance", "mode_income","mode_age","mode_canton", 'vot']
 
 ATTR_TO_COL = {"age":"age_class","income":'income_class',"canton":"canton_id",
-               "distance":"distance", "sp_region":"sp_region"}
+               "distance":"distance_class", "sp_region":"sp_region"}
 
 WEIGHTS = {"global":1.0,"distance":1.0, "mode_distance":1,
-           "vot":1/0.8e6,
+           "vot":1/5e5,
            "canton":0.5,"age":0.3,"income":0.5, "sp_region":1.0, 
             "mode_income":0.5,"mode_age":0.3,"mode_canton":0.5}
 
-WEIGHT_MODE = {"pt":1.0,"car":1.0,"walk":2.0,"bike":2.0,"car_passenger":1.0}#because walk and bike all zeros for long trips
+WEIGHT_MODE = {"pt":1.0,"car":1.0,"walk":2.0,"bike":2.0,"car_passenger":1.0} #because walk and bike all zeros for long trips, used only for distance distributions
 
-SELECTED_MODE = {"sp_region":['car','pt']} #must be dict of list
+SELECTED_MODE = {"sp_region":['car','pt']} #must be dict of list, for each attributes, if we want to include only some of the modes, not all of them
 
 VoT = {"car":[30.6], "walk":[26.7], "bike":[18.2], "pt":[14.8]}
 #VoT are obtained from https://www.research-collection.ethz.ch/bitstream/handle/20.500.11850/491385/ab1637.pdf?sequence=2&isAllowed=y
@@ -47,9 +47,8 @@ WEIGHT_MODE_VOT = {"pt":1.0,"car":1.0,"walk":0.1,"bike":0.1,"car_passenger":0.1}
 class Loss(Losses):
     
     def __init__(self, mode_shares_provider: ModeShares,
-                       metric = "js", 
-                       objectives:list = None,
-                       calibration_modes:list = ["car","pt","bike","walk"]):
+                       metric = "mse", 
+                       objectives:list = None):
           
         super().__init__(metric)
         
@@ -61,16 +60,14 @@ class Loss(Losses):
         if objectives is not None:           
             assert all([obj in POSSIBLE_OBJECTIVES for obj in objectives])
         else:
-            self.objectives = ["global", "distance"]
+            self.objectives = ["global", "distance", "mode_distance"]
         
         self.modes = ["car","walk","bike","pt","car_passenger"]   #Should be all simulated modes       
-        self.calibration_modes = calibration_modes
-        self.calibrated_modes_weights = np.array([WEIGHT_MODE[mode] for mode in calibration_modes]).reshape(-1,1)
-        self.calibrated_modes_weights_vot = np.array([WEIGHT_MODE_VOT[mode] for mode in calibration_modes]).reshape(-1,1)
+        self.calibration_modes = ["car","pt","bike","walk"]  #calibration modes are only the modes whose losses are considered as objective to minimize
+        self.calibrated_modes_weights = np.array([WEIGHT_MODE[mode] for mode in self.calibration_modes]).reshape(-1,1)
+        self.calibrated_modes_weights_vot = np.array([WEIGHT_MODE_VOT[mode] for mode in self.calibration_modes]).reshape(-1,1)
         
-        self.utility_time = []
-        self.selector_time = []
-        self.mode_share_time = []
+
         self.losses_record = {key: [] for key in objectives}
         
     def _get_vot(self):
@@ -127,17 +124,12 @@ class Loss(Losses):
     
         # Select and explode relevant columns
         base_columns = ["candidate_mode", "euclidean_distance", "income_class", 
-                        "canton_id", "age_class", "sp_region"]
-        exploded_columns = ["candidate_mode", "euclidean_distance"]
-        selected_modes = tours.select(base_columns).explode(exploded_columns).filter(pl.col("euclidean_distance") > 1e-3)
-        
-        # TODO: add distance bins in base columns
-        if "distance" in objectives or "mode_distance" in objectives:
-            distance_bins = np.array(self.distance_bins)*1e-3 #convert to km    
-            selected_modes = selected_modes.with_columns([
-                pl.col("euclidean_distance").cut(breaks=distance_bins[1:-1], 
-                                                 labels=self.distance_labels).alias("distance")])
-            
+                        "canton_id", "age_class", "sp_region", "distance_class"]
+        exploded_columns = ["candidate_mode", "euclidean_distance", "distance_class"]
+        selected_modes = (tours.select(base_columns)
+                               .explode(exploded_columns)
+                               .filter(pl.col("euclidean_distance") > 1e-3))
+                    
         # get the mode shares        
         if "global" in objectives:
             mode_shares["global"] = U.compute_global_mode_share(selected_modes, modes)   
@@ -204,11 +196,12 @@ class Loss(Losses):
             assert all_mode_weights.shape==vectors["global"][0].shape
         
         for k,(actual,estimated) in vectors.items():
-            weight = WEIGHTS[k]  
-            mode_weight = self._get_mode_weights(k)
+            weight = WEIGHTS[k]  # weight of the objective
+            mode_weight = self._get_mode_weights(k) if "distance" in k else np.ones((len(cal_modes),1))# weight of the modes
             
             sel_mode = ([cal_modes.index(i) for i in SELECTED_MODE[k]] 
-                        if k in SELECTED_MODE else None)       
+                        if k in SELECTED_MODE else None)
+                   
             x = (actual[sel_mode]*mode_weight[sel_mode]).flatten()
             y = (estimated[sel_mode]*mode_weight[sel_mode]).flatten()
             k_loss = loss_func(x, y) #DO NOT APPLY LOG HERE
@@ -227,26 +220,27 @@ class Loss(Losses):
 
     
 
-    def plot(self):
+    def plot(self, path:str= None):
         x = self.losses_record
-        stds, avgs, q75 = {}, {}, {}
+        # stds, avgs, q75 = {}, {}, {}
         for k,y in x.items():
             weight = WEIGHTS[k] 
             y = np.array(y)                                   
             plt.scatter(range(len(y)),y*weight, label=k, alpha=0.5, s=4)
-            print(k, '|STD  -->', np.std(y*weight))
-            print(k, '|Mean -->', np.mean(y*weight))
-            print(k, '|LAST -->', (y*weight)[-1], "\n")
-            
-            std, mean, q75i = y.std(), y.mean(), np.percentile(y, 75)
-            stds[k] = (float(std))
-            avgs[k] = (float(mean))
-            q75[k]  = (q75i)
+            # print(k, '|STD  -->', np.std(y*weight))
+            # print(k, '|Mean -->', np.mean(y*weight))
+            # print(k, '|LAST -->', (y*weight)[-1], "\n")            
+            # std, mean, q75i = y.std(), y.mean(), np.percentile(y, 75)
+            # stds[k] = (float(std))
+            # avgs[k] = (float(mean))
+            # q75[k]  = (q75i)
         
         plt.ylim([-0.2,5])                    
         plt.legend()
         plt.grid(alpha=0.5)
-
+        if path is not None:
+            plt.savefig(path, dpi=300, bbox_inches='tight')
+        
     
     
     

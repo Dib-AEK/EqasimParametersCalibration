@@ -10,16 +10,13 @@ from typing import Dict
 import os
 from MomentumAndDecay.BetaRateRise import BetaRateRise
 from MomentumAndDecay.PopulationFactor import PopulationFactor
-
+import json
 
 
 def parse_dict(input_str: str) -> Dict[str, float]:
     input_str = input_str.replace("\n", "")
     result = {}
-    for pair in input_str.split(","):
-        pair = pair.strip()
-        if not pair:
-            continue
+    for pair in parse_list(input_str):        
         if ":" not in pair:
             raise ValueError(f"Invalid key-value pair: {pair}")
         key, value = pair.split(":", 1)
@@ -31,10 +28,23 @@ def parse_dict(input_str: str) -> Dict[str, float]:
             raise ValueError(f"Invalid float value: {value}")
     return result
 
-def check_required_files(paths: list[str]):
+
+def parse_list(input_str: str) -> list:
+    input_str = input_str.replace("\n", "")
+    result = []
+    for item in input_str.split(","):
+        item = item.strip()
+        if item:
+            result.append(item)
+    return result
+
+def check_if_files_exists(paths: list[str], check_if_files = False):
     for path in paths:
-        if not os.path.isfile(path):
-            raise FileNotFoundError(f"Required file does not exist: {path}")
+        if not os.path.exists(path):
+            raise FileExistsError(f"Path does not exist: {path}")
+        if check_if_files:
+            if not os.path.isfile(path):
+                raise FileNotFoundError(f"Required file does not exist: {path}")
 
 
 def get_files(args):
@@ -50,7 +60,7 @@ def get_files(args):
     
     files = dict(bike=bike_file, pt=pt_file, car=car_file, walk=walk_file, car_passenger=cp_file, tours = tours_file)
     
-    check_required_files(list(files.values()))
+    check_if_files_exists(list(files.values()), check_if_files=True)
     
     return files
 
@@ -84,7 +94,39 @@ def get_mode_shares_distribution(args):
 
 
 
+def hash_run(args):
+    cache_dir = args.optimizer_cache
+    eqasim_cache = args.eqasim_cache_path
+    metric = args.metric
+    optimizer = args.optimizer
+    objectives = args.objectives
+    # create a hash for these data and then a json file path in the cache
+    data_hash = hash((*tuple(objectives), metric, optimizer, eqasim_cache, cache_dir))
+    return data_hash
 
+def update_number_of_runs(args):
+    cache_dir = args.optimizer_cache
+    data_hash = hash_run(args)
+    json_file_path = os.path.join(cache_dir, f"run_{data_hash}.json")
 
+    # Update the number of runs in the json file
+    if os.path.exists(json_file_path):
+        with open(json_file_path, "r") as f:
+            data = json.load(f)
+        data["number_of_runs"] += 1
+        with open(json_file_path, "w") as f:
+            json.dump(data, f)
+    else:
+        with open(json_file_path, "w") as f:
+            json.dump({"number_of_runs": 1}, f)
 
+def get_number_of_runs(args):
+    cache_dir = args.optimizer_cache
+    data_hash = hash_run(args)
+    json_file_path = os.path.join(cache_dir, f"run_{data_hash}.json")
 
+    if os.path.exists(json_file_path):
+        with open(json_file_path, "r") as f:
+            data = json.load(f)
+        return data.get("number_of_runs", 0)
+    return 0

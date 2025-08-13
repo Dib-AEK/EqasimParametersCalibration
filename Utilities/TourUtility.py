@@ -12,6 +12,7 @@ from Utilities.CarUtility import CarUtility
 from Utilities.PtUtility import PtUtility
 from Utilities.WalkUtility import WalkUtility
 from Utilities.ZeroUtility import ZeroUtility
+from modeShares.ModeShares import ModeShares
 import pandas as pd
 import numpy as np
 from scipy.stats import qmc
@@ -39,12 +40,23 @@ class TourUtility(BaseUtility):
     persons = []
     num_persons = 0
     sample = None
+    cols_to_return_with_utilities = [] 
     
     @staticmethod
-    def init_data(car, pt, bike, walk, cp, tours=None, population_sample = None, eqasim_cache_dir=None):
+    def init_data(car, pt, bike, walk, cp, tours=None, population_sample = None, 
+                  eqasim_cache_dir=None, mode_shares_provider:ModeShares=None):
         """
         Initializes mode-specific input data once.
         """
+        TourUtility.sample = population_sample
+        TourUtility.eqasim_cache_dir = eqasim_cache_dir
+        
+        # if population_sample is lower then the number of agents in the dataframes, sample randomly this number of agents
+        num_agents = len(tours["person_id"].unique()) if tours is not None else 0
+        if (population_sample is not None) and (tours is not None) and (population_sample < num_agents):
+            population = tours["person_id"].unique().sample(n=population_sample)
+            car, pt, bike, walk, cp, tours = TourUtility.sample_dataframes(population, car, pt, bike, walk, cp, tours)
+
         TourUtility.variables_by_mode = {
             "car": car.lazy(),
             "pt": pt.lazy(),
@@ -52,18 +64,14 @@ class TourUtility(BaseUtility):
             "walk": walk.lazy(),
             "car_passenger":cp.lazy()
         }
-        
-        TourUtility.sample = population_sample
-        TourUtility.eqasim_cache_dir = eqasim_cache_dir
-        
+
         if tours is not None:
             TourUtility.tours = tours.lazy()
             # Here we include Euclidean distance in the tours dataframe in order to get mode shares distribution
-            TourUtility.create_distance_column_in_tours()
+            TourUtility.create_distance_column_in_tours(mode_shares_provider)
             # Here, we include other attributes (age, income, sex, canton) for distributions
             if eqasim_cache_dir is not None:
-                TourUtility.add_person_attributes_to_tours()
-            
+                TourUtility.add_person_attributes_to_tours()            
             # for better efficiency, we explode tours here
             exploded_tours = TourUtility.get_exploded_tours_for_utilities()
             TourUtility.exploded_tours = {k:v.lazy() for k,v in exploded_tours.items()}
@@ -71,7 +79,22 @@ class TourUtility(BaseUtility):
             TourUtility.persons = tours["person_id"].unique()
             TourUtility.num_persons = len(TourUtility.persons)
             
-            
+        TourUtility.cols_to_return_with_utilities = ['tour_row_id', 'person_id', 
+         'trip_key', 'selection_id', 'candidate_mode', 'euclidean_distance',
+         'age_class','sex','income_class','canton_id', 'sp_region'] 
+        if mode_shares_provider is not None:
+            TourUtility.cols_to_return_with_utilities.append("distance_class")
+                
+    @staticmethod
+    def sample_dataframes(population, *args):
+        filtered_dfs = []
+        for df in args:
+            if df is not None:
+                if "person_id" in df.columns:
+                    df = df.filter(pl.col("person_id").is_in(population))
+            filtered_dfs.append(df)
+        return filtered_dfs
+
     @staticmethod
     def set_population_sample(population_sample):
         TourUtility.sample = population_sample
@@ -140,10 +163,11 @@ class TourUtility(BaseUtility):
         return exploded_lazy
     
     @staticmethod
-    def compute_mode_utilities(exploded_lazy: pl.LazyFrame, mode: str) -> pl.LazyFrame:
+    def compute_mode_utilities(mode: str) -> pl.LazyFrame:
         estimator = TourUtility.utility_estimators.get(mode)
         variables_lazy = TourUtility.variables_by_mode.get(mode)
-    
+        exploded_lazy = TourUtility.exploded_tours[mode]
+
         return (
             exploded_lazy
             .join(variables_lazy, on="trip_key", how="left")
@@ -156,25 +180,19 @@ class TourUtility(BaseUtility):
         
         
     @staticmethod
-    def get_all_utilities():
-        #select data
-        exploded_lazy = TourUtility.exploded_tours
-        cols = ['tour_row_id', 'person_id', 'trip_key', 'selection_id', 'candidate_mode', 'euclidean_distance',
-                'age_class','sex','income_class','canton_id', 'sp_region']
-        tours_lazy = TourUtility.tours.select(cols)
-        
+    def get_all_utilities():       
         # Compute utilities per mode
-        results = (pl.concat([ TourUtility.compute_mode_utilities(exploded_lazy[mode], mode)
+        results = (pl.concat([ TourUtility.compute_mode_utilities(mode)
                               for mode in TourUtility.utility_estimators])
                    .group_by("tour_row_id")
                    .agg(pl.col("utility").sum().alias("utility")))
                    
         
-        # join with tours and return results
-        results = (tours_lazy
+        ### join with tours and return results
+        #select data                       
+        results = (TourUtility.tours.select(TourUtility.cols_to_return_with_utilities)
                     .join(results, on="tour_row_id", how="left")
-                    .select([*cols, "utility"]))
-        
+                    .select([*TourUtility.cols_to_return_with_utilities, "utility"]))        
         return results
         
 
@@ -201,7 +219,7 @@ class TourUtility(BaseUtility):
         return df
     
     @staticmethod
-    def create_distance_column_in_tours():
+    def create_distance_column_in_tours(mode_shares_provider:ModeShares=None):
         # Add a stable row index to preserve original tour rows
         tours = TourUtility.tours.select(
                 ['tour_row_id', 'person_id', 'trips_index', 'candidate_mode']).collect()
@@ -232,16 +250,26 @@ class TourUtility(BaseUtility):
                   .otherwise(pl.col("euclidean_distance"))   # keep existing
                   .alias("euclidean_distance")
             ).drop("euclidean_distance_right")
-    
+
         # Group back by original tour row ID and collect euclidean_distance as list
-        updated_tours = (exploded.select(["tour_row_id","trip_key","euclidean_distance"])
+        cols_to_explode = ["tour_row_id","trip_key","euclidean_distance"]
+        if mode_shares_provider is not None:
+            distance_bins = np.array(mode_shares_provider.get_distance_bins())*1e-3 #convert to km    
+            distance_labels = mode_shares_provider.get_distance_labels()
+            exploded      = exploded.with_columns([
+                pl.col("euclidean_distance").cut(breaks=distance_bins[1:-1], 
+                                                 labels=distance_labels).alias("distance_class")])                            
+            cols_to_explode.append("distance_class")
+
+        updated_tours = (exploded.select(cols_to_explode)
                          .group_by("tour_row_id")
-                         .agg([pl.col("trip_key"),pl.col("euclidean_distance")])
+                         .agg([pl.col(j) for j in cols_to_explode if j!="tour_row_id"])
                          .sort("tour_row_id"))
         
         tours = TourUtility.tours.collect().with_columns([
                 updated_tours["euclidean_distance"].alias("euclidean_distance"),
-                updated_tours["trip_key"].alias("trip_key")
+                updated_tours["trip_key"].alias("trip_key"),
+                updated_tours["distance_class"].alias("distance_class") if "distance_class" in updated_tours.columns else None
             ])
         
         TourUtility.tours = tours.lazy()
@@ -276,19 +304,22 @@ class TourUtility(BaseUtility):
         
         
     @staticmethod
-    def read_and_init(file_path, files:dict, population_sample = None, eqasim_cache_dir = None):
-        tours = TourUtility.read_csv(file_path)        
+    def read_and_init(tours, car, pt, bike, walk, car_passenger, 
+                      population_sample = None, eqasim_cache_dir = None,
+                      mode_shares_provider:ModeShares=None):
+        df_tours = TourUtility.read_csv(tours)        
         
         
-        bike = BikeUtility.read_csv(files["bike"])
-        car  = CarUtility.read_csv(files["car"])
-        pt   = PtUtility.read_csv(files["pt"])
-        walk = WalkUtility.read_csv(files["walk"])                                
-        cp   = ZeroUtility.read_csv(files["car_passenger"]) 
-        
-        TourUtility.init_data(car, pt, bike, walk, cp, tours, 
+        df_bike = BikeUtility.read_csv(bike)
+        df_car  = CarUtility.read_csv(car)
+        df_pt   = PtUtility.read_csv(pt)
+        df_walk = WalkUtility.read_csv(walk)
+        df_cp   = ZeroUtility.read_csv(car_passenger)
+
+        TourUtility.init_data(df_car, df_pt, df_bike, df_walk, df_cp, df_tours, 
                               population_sample=population_sample,
-                              eqasim_cache_dir = eqasim_cache_dir)
+                              eqasim_cache_dir = eqasim_cache_dir,
+                              mode_shares_provider = mode_shares_provider)
 
 
 

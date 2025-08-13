@@ -7,31 +7,52 @@ Created on Tue May 27 11:39:19 2025
 """
 
 from abc import ABC, abstractmethod
+import json
 import numpy as np
 from typing import Dict, Optional
+import os
+import MomentumAndDecay.utils as U
 
 class MomentumBase(ABC):
     """
     Abstract base class for momentum-based smoothing of parameter updates.
     """
     def __init__(self, cache_path: str):
-        self.cache_path = cache_path
-        self.param_keys = []
+        self.cache_path  = os.path.join(cache_path, "momentum_cache.json")
+        self.param_keys  = []
+        self.hyperparams = {}
+        self.state       = {}
+
         self.smoothed_values = np.array([])
         self.initial_values = np.array([])
-        self.optimal_values = np.array([])
-        self.hyperparams = {}
+        self.optimal_values = np.array([])        
     
-    @abstractmethod
-    def _load_cache(self) -> None:
-        """Load internal state from disk."""
-        pass
-    
-    @abstractmethod
     def _save_cache(self) -> None:
         """Save current state to disk."""
-        pass
-    
+        data = dict(param_keys=self.param_keys, 
+                    hyperparams=self.hyperparams, 
+                    state=self.state)
+        # convert any np.array to list
+        data = U.to_lists(data)
+        os.makedirs(os.path.dirname(self.cache_path), exist_ok=True)
+        with open(self.cache_path, 'w') as f:
+            json.dump(data, f, indent=2)
+
+    def _load_cache(self) -> None:
+        """Load internal state from disk."""        
+        data = {}
+        if os.path.exists(self.cache_path):
+            try:
+                with open(self.cache_path, 'r') as f:
+                    data = json.load(f)
+            except Exception as e:
+                print(f"[Warning] Failed to load cache: {e}")
+        data = U.to_arrays(data)  # Convert lists back to np.arrays
+        
+        self.param_keys = data.get("param_keys", [])
+        self.hyperparams = data.get("hyperparams", {})
+        self.state = data.get("state", {})
+
     def set_initial_values(self, values: Dict[str, float]) -> None:
         """
         Set initial parameter values (x₀).
@@ -53,8 +74,8 @@ class MomentumBase(ABC):
         values = values.copy()
         if hasattr(self, 'initial_values'):
             # Verify keys match
-            if values.keys() != self.initial_values_dict().keys():
-                raise ValueError("Parameter keys must match between initial and optimized values.")
+            if values.keys() != self.get_initial_values().keys():
+                raise ValueError("Parameters keys must match between initial and optimized values.")
         
         self.optimal_values = np.array([values[k] for k in self.param_keys], dtype=np.float64)
         self._update_smoother()
@@ -78,20 +99,20 @@ class MomentumBase(ABC):
         """Internal method to update the smoothing state."""
         pass
     
-    def initial_values_dict(self) -> Dict[str, float]:
+    def get_initial_values(self) -> Dict[str, float]:
         """Convert initial values array back to dictionary."""
         if not hasattr(self, 'initial_values'):
             return {}
         return {k: float(v) for k, v in zip(self.param_keys, self.initial_values)}
     
-    def optimal_values_dict(self) -> Dict[str, float]:
+    def get_optimal_values(self) -> Dict[str, float]:
         """Convert optimal_values values array back to dictionary."""
         if not hasattr(self, 'optimal_values'):
             return {}
         return {k: float(v) for k, v in zip(self.param_keys, self.optimal_values)}
     
-    def smoothed_values_dict(self) -> Dict[str, float]:
+    def get_smoothed_values(self) -> Dict[str, float]:
         """Convert smoothed_values values array back to dictionary."""
-        if not hasattr(self, 'optimal_values'):
+        if not hasattr(self, 'smoothed_values'):
             return {}
         return {k: float(v) for k, v in zip(self.param_keys, self.smoothed_values)}

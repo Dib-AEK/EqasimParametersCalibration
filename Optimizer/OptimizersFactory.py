@@ -390,19 +390,7 @@ class DualAnnealing(Optimizer):
 @register_optimizer("cmaes")
 class CMAESOptimizer(Optimizer):
     
-    def get_cmaes_optimizer(self, scaler, back_scaler, lb, ub):
-        # the file where the cached optimizer might be stored
-        # filename = self.cache_file
-        # if os.path.exists(filename):
-        #     logger.info("    Optimizer is loaded from cache")
-        #     es = self.load_cmaes_optimizer()
-        #     es.sigma = min(1e-1, es.sigma*3) # to restart the search from the current state
-            
-        #     if not len(es.mean)==len(lb):
-        #         logger.info("    Optimizer dimension mismatch, creating new optimizer")
-        #         os.remove(filename)
-        #         return self.get_cmaes_optimizer(scaler, back_scaler, lb, ub)
-        # else:
+    def start_new_optimizer(self, scaler, unscaler, lb, ub):
         import cma        
         x0 = np.array([v for k,v in self.initial_values.items()])
         x0_scaled = scaler(x0)   
@@ -417,8 +405,27 @@ class CMAESOptimizer(Optimizer):
         options.set("bounds", [np.zeros_like(lb), np.ones_like(lb)])
         options.set("maxfevals", self.max_evals)        
         options.set("popsize", popsize)
+        options.set("tolfun", 1e-3)  # Stop if function value changes less than 1e-3
+        options.set("tolx", 5e-3)    # Stop if parameters change less than 5e-3
         es = cma.CMAEvolutionStrategy(x0_scaled, sigma, options)  
+        return es
     
+    def get_cmaes_optimizer(self, scaler, unscaler, lb, ub):
+        # the file where the cached optimizer might be stored
+        filename = self.cache_solution_file
+        if os.path.exists(filename):
+            logger.info("    Optimizer is loaded from cache")
+            es = self.load_cmaes_optimizer(scaler, unscaler, lb, ub)
+            es.sigma = min(1e-1, es.sigma*3) # to restart the search from the current state
+            
+            if not len(es.mean)==len(lb):
+                logger.info("    Optimizer dimension mismatch, creating new optimizer")
+                os.remove(filename)
+                return self.get_cmaes_optimizer(scaler, unscaler, lb, ub)
+        else:
+            logger.info("    Optimizer is created from scratch")
+            es = self.start_new_optimizer(scaler, unscaler, lb, ub) 
+        
         return es
         
     def optimize(self):        
@@ -428,55 +435,41 @@ class CMAESOptimizer(Optimizer):
         # Convert bounds to arrays and define scaling functions
         lb, ub = np.array(self.lb), np.array(self.ub)
         scaler = lambda x: (x - lb) / (ub - lb)
-        back_scaler = lambda x: x * (ub - lb) + lb
+        unscaler = lambda x: x * (ub - lb) + lb
          
-        es = self.get_cmaes_optimizer(scaler, back_scaler, lb, ub)             
-        min_num_iterations = int(500/es.popsize) #I think 500 evalution would be enough
+        
+        es = self.get_cmaes_optimizer(scaler, unscaler, lb, ub)             
+        min_num_iterations = int(0.25*self.max_evals//es.popsize) #I think 25% of total evalutions would be enough
         iteration = 0
         stop = False
         while not stop:
             solutions = es.ask()                                           
-            objectives = [self._objective(back_scaler(sol), sol) for sol in solutions]                        
+            objectives = [self._objective(unscaler(sol), sol) for sol in solutions]                        
             es.tell(solutions, objectives)                        
             es.disp()    
             iteration +=1
             stop = False if (iteration<min_num_iterations) else es.stop()
         
-        xbest = back_scaler(es.result.xbest)
-        # self.save_cmaes_model(es)
+        xbest = unscaler(es.result.xbest)
+        
+        self.save_cmaes_model(es)
         return {"params": dict(zip(self.param_names, xbest)), "loss": es.result.fbest}
     
+    def load_cmaes_optimizer(self, scaler, unscaler, lb, ub):                  
+        es = self.start_new_optimizer(scaler, unscaler, lb, ub)
+        # Load the explored solutions and objectives
+        self.load_explored_solutions_and_objectives()
+        # resume the optimization from the last state
+        num_to_keep = int(np.floor(self.max_evals / es.popsize)*es.popsize)
+        self.explored_solutions = self.explored_solutions[-num_to_keep:]
+        self.explored_objectives = self.explored_objectives[-num_to_keep:]    
 
-
-    def load_cmaes_optimizer(self):  
-        filename = self.cache_file
-        es = pickle.load(open(self.cache_file, 'rb'))  
-        
-        sol_filename = filename.replace(".p", "_sol.p")
-        sols = pickle.load(open(sol_filename, 'rb'))  
-        
-        self.explored_solutions = sols["solutions"]  
-        self.explored_objectives = sols["objectives"]
+        es.feed_for_resume(self.explored_solutions, self.explored_objectives)
         return es
         
-    def save_cmaes_model(self, es):        
-        filename = self.cache_file
-    
-        # Save the CMA-ES state
-        with open(filename, 'wb') as f:
-            f.write(es.pickle_dumps())  
-    
-        # Save solutions and objectives
-        sols = {
-            'solutions': self.explored_solutions,
-            'objectives': self.explored_objectives
-        }
-        sol_filename = filename.replace(".p", "_sol.p")
-        with open(sol_filename, 'wb') as f:
-            pickle.dump(sols, f)  
-    
-    
-    
+    def save_cmaes_model(self, es): 
+        # Only save the explored solutions, not the optimizer itself
+        self.save_explored_solutions_and_objectives()
 
 
 

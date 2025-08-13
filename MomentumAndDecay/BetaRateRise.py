@@ -57,7 +57,7 @@ class BetaRateRise:
 
     # --- Rise Strategies ---
     @classmethod
-    def _step_rise(cls, iteration, drop_interval=20):
+    def _step_rise(cls, iteration, drop_interval=15):
         """Beta decreases step-wise every N iterations."""
         d = np.floor(iteration / drop_interval) + 1
         return 1 - (1 - cls._initial_beta) / d
