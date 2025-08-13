@@ -179,5 +179,5 @@ cython_debug/
 *.gz
 it.*
 
-testsAndParams
+testsAndParams*
 optimizerCache
