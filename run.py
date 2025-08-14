@@ -73,13 +73,15 @@ TourUtility.read_and_init(**files,
 # find the optimal parameters through optimization
 optimizer = get_optimizer(args,  objective_function=myLoss)
 logger.info(f"iter{args.iteration}: Starting optimization...")
+
+  
 t0 = time.time()
-result = optimizer.optimize()
+result = optimizer.optimize(overwrite=True)
 dt = time.time() - t0
 logger.info(f"iter{args.iteration}: Optimization completed in {int(dt//60)}:{int(dt%60):02d} minutes")
 
 # plot the optimization process
-optimizer.plot()
+optimizer.plot(show=True)
 
 #apply the momentum
 optimal_parameters = Parameters.get_parameters(parameters_to_calibrate).copy()

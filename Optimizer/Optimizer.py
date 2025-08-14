@@ -48,7 +48,7 @@ class Optimizer(ABC):
         self.explored_objectives = []
 
     @abstractmethod
-    def optimize(self) -> Dict[str, Any]:
+    def optimize(self, *args, **kwargs) -> Dict[str, Any]:
         """
         Run the optimization and return the best result.
 
@@ -101,7 +101,7 @@ class Optimizer(ABC):
             self.explored_solutions = data.get("explored_solutions", [])
             self.explored_objectives = data.get("explored_objectives", [])
 
-    def plot(self):
+    def plot(self, show = False):
         l = self.explored_solutions
         if len(l):
             l = [list(li) for li in l]
@@ -126,7 +126,8 @@ class Optimizer(ABC):
     
             if self.image_path is not None:
                 plt.savefig(self.image_path, bbox_inches='tight', dpi=300)
-            plt.close()
-    
-
-
+            
+            if show:
+                plt.show()
+            else:
+                plt.close()

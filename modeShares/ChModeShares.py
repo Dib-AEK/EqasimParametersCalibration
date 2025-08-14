@@ -45,7 +45,7 @@ class ChModeShares(ModeShares):
             self.trips, self.transit = self._load_data()
             
             self.distance_bins = distance_bins if distance_bins is not None else \
-                                [0, 1000, 2000, 3000, 4000, 5000, 10000, 20000, 1000000]
+                                [0, 1000, 2000, 3000, 4000, 5000, 8000, 12000, 20000, 1000000]
             
             self.distance_labels = [
                 f"{i}-({self.distance_bins[i]//1000}km-{self.distance_bins[i+1]//1000}km)"
@@ -139,7 +139,7 @@ class ChModeShares(ModeShares):
         mode_share =  (self.trips
                         .groupby([by, "mode"], observed=False)["person_weight"]
                         .sum()
-                        .groupby(level=by)
+                        .groupby(level=by, observed = False)
                         .transform(lambda x: x / x.sum())                
                         .rename("mode_share")
                         .reset_index()                
@@ -154,7 +154,7 @@ class ChModeShares(ModeShares):
         mode_share =  (self.trips
                         .groupby([by, "mode"], observed=False)["person_weight"]
                         .sum()
-                        .groupby(level="mode")
+                        .groupby(level="mode", observed = False)
                         .transform(lambda x: x / x.sum())                
                         .rename("distribution")
                         .reset_index()                

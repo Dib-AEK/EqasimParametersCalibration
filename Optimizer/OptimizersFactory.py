@@ -400,30 +400,31 @@ class DualAnnealing(Optimizer):
 @register_optimizer("cmaes")
 class CMAESOptimizer(Optimizer):
     
-    def start_new_optimizer(self, scaler, unscaler, lb, ub):
+    def start_new_optimizer(self, scaler, unscaler, lb, ub, more_evals = 0):
         import cma        
         x0 = np.array([v for k,v in self.initial_values.items()])
         x0_scaled = scaler(x0)   
         
-        sigma = 0.333
+        sigma = 0.3
         num_param = len(self.param_names)
-        popsize = int(4+10*np.ceil(np.log(num_param)))
+        popsize = int(8+12*np.ceil(np.log(num_param)))
         logger.info(f"    Population size is set to {popsize}")
         
         #Now, use CMA-ES optimization
         options = cma.CMAOptions()
         options.set("bounds", [np.zeros_like(lb), np.ones_like(lb)])
-        options.set("maxfevals", self.max_evals)        
+        options.set("maxfevals", self.max_evals + more_evals)        
         options.set("popsize", popsize)
         options.set("tolfun", 1e-3)  # Stop if function value changes less than 1e-3
         options.set("tolx", 5e-3)    # Stop if parameters change less than 5e-3
+        options.set("seed", 1102)
         es = cma.CMAEvolutionStrategy(x0_scaled, sigma, options)  
         return es
-    
-    def get_cmaes_optimizer(self, scaler, unscaler, lb, ub):
+
+    def get_cmaes_optimizer(self, scaler, unscaler, lb, ub, overwrite):
         # the file where the cached optimizer might be stored
-        filename = self.cache_solution_file
-        if os.path.exists(filename):
+        filename = self.cache_solution_file        
+        if os.path.exists(filename) and not overwrite:
             logger.info("    Optimizer is loaded from cache")
             es = self.load_cmaes_optimizer(scaler, unscaler, lb, ub)
             es.sigma = min(1e-1, es.sigma*3) # to restart the search from the current state
@@ -434,11 +435,11 @@ class CMAESOptimizer(Optimizer):
                 return self.get_cmaes_optimizer(scaler, unscaler, lb, ub)
         else:
             logger.info("    Optimizer is created from scratch")
-            es = self.start_new_optimizer(scaler, unscaler, lb, ub) 
+            es = self.start_new_optimizer(scaler, unscaler, lb, ub)             
         
         return es
         
-    def optimize(self):        
+    def optimize(self, overwrite = False):        
                        
         logger.info("Running CMA-ES Optimization...")
 
@@ -446,19 +447,16 @@ class CMAESOptimizer(Optimizer):
         lb, ub = np.array(self.lb), np.array(self.ub)
         scaler = lambda x: (x - lb) / (ub - lb)
         unscaler = lambda x: x * (ub - lb) + lb
-         
+                 
+        es = self.get_cmaes_optimizer(scaler, unscaler, lb, ub, overwrite)                     
         
-        es = self.get_cmaes_optimizer(scaler, unscaler, lb, ub)             
-        min_num_iterations = int(0.25*self.max_evals//es.popsize) #I think 25% of total evalutions would be enough
-        iteration = 0
-        stop = False
-        while not stop:
+        iteration = 0        
+        while not es.stop():
             solutions = es.ask()                                           
             objectives = [self._objective(unscaler(sol), sol) for sol in solutions]                        
             es.tell(solutions, objectives)                        
             es.disp()    
-            iteration +=1
-            stop = False if (iteration<min_num_iterations) else es.stop()
+            iteration +=1            
         
         xbest = unscaler(es.result.xbest)
         
@@ -466,7 +464,7 @@ class CMAESOptimizer(Optimizer):
         return {"params": dict(zip(self.param_names, xbest)), "loss": es.result.fbest}
     
     def load_cmaes_optimizer(self, scaler, unscaler, lb, ub):                  
-        es = self.start_new_optimizer(scaler, unscaler, lb, ub)
+        es = self.start_new_optimizer(scaler, unscaler, lb, ub, more_evals=int(self.max_evals*0.5) )
         # Load the explored solutions and objectives
         self.load_explored_solutions_and_objectives()
         # resume the optimization from the last state

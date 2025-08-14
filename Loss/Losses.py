@@ -54,26 +54,33 @@ class Losses(ABC):
 
     def get_loss_func(self, metric):
         if metric == "mse":
-            return self.mse()
+            func= self.mse()
         elif metric == "mae":
-            return self.mae()
+            func= self.mae()
         elif metric == "mape":
-            return self.mape()
-        
+            func= self.mape()        
         elif metric in {"cosine", "cosine_similarity"}:
-            return self.cosine_similarity()
+            func=self.cosine_similarity()
         elif metric in {"kl", "kl_divergence"}:
-            return self.kl_divergence()
+            func= self.kl_divergence()
         elif metric in {"js", "js_divergence"}:
-            return self.js_divergence()
+            func= self.js_divergence()
         elif metric in {"hellinger", "hellinger_distance"}:
-            return self.hellinger_distance()
+            func= self.hellinger_distance()
         elif metric in {"tv", "total_variation", "total_variation_distance", "l_distance"}:
-            return self.total_variation_distance()
+            func= self.total_variation_distance()
         elif metric in {"ll", "log_likelihood"}:
-            return self.log_likelihood()
+            func= self.log_likelihood()
         else:
             raise ValueError(f"Unknown loss metric: '{self.metric}'")
+        
+        epsilon = 1e-4 
+        def loss_func(x,y):
+            sel = (x>epsilon)
+            return func(x[sel],y[sel])
+        
+        return loss_func
+
 
     def mse(self):        
         return mean_squared_error

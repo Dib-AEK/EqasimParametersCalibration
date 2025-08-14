@@ -29,7 +29,7 @@ POSSIBLE_OBJECTIVES = ["global","distance","canton","age","income","sp_region",
 ATTR_TO_COL = {"age":"age_class","income":'income_class',"canton":"canton_id",
                "distance":"distance_class", "sp_region":"sp_region"}
 
-WEIGHTS = {"global":1.0,"distance":1.0, "mode_distance":1,
+WEIGHTS = {"global":2.0,"distance":1.0, "mode_distance":1,
            "vot":1/5e5,
            "canton":0.5,"age":0.3,"income":0.5, "sp_region":1.0, 
             "mode_income":0.5,"mode_age":0.3,"mode_canton":0.5}
@@ -201,7 +201,9 @@ class Loss(Losses):
         
         for k,(actual,estimated) in vectors.items():
             weight = WEIGHTS[k]  # weight of the objective
-            mode_weight = self._get_mode_weights(k) if "distance" in k else np.ones((len(cal_modes),1))# weight of the modes
+            mode_weight = np.ones((len(cal_modes),1))# weight of the modes
+            if "distance" in k or "vot" in k:
+                mode_weight = self._get_mode_weights(k)  
             
             sel_mode = ([cal_modes.index(i) for i in SELECTED_MODE[k]] 
                         if k in SELECTED_MODE else None)
@@ -220,7 +222,7 @@ class Loss(Losses):
             loss += weight*k_loss
             total_weights += weight
               
-        return np.log(loss/(4*total_weights)) # I use the log because it highlights better the minima
+        return np.log(loss/(10*total_weights)) # I use the log because it highlights better the minima
 
     
 
