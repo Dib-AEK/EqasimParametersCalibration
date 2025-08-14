@@ -31,17 +31,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Optimizer (Python)")
 starting_time = time.time()
 
-# parse arguments and correct arguments
-<<<<<<< HEAD
+# PParsing arguments
 args = parse_args()
-=======
-args = parse_args()  
-args.bounds =   {'car.alpha_u': 4.0,
-                 'walk.alpha_u': 3.0,
-                 'bike.alpha_u': 3.0}
-args.optimizer = "kai"
-args.objectives  = ["global"]
->>>>>>> 7b140a09b5e06062dd643ebb247ab099b8d9782d
 
 parameters_to_calibrate = args.bounds.keys()
 logger.info(f"Calibrated parameters: {parameters_to_calibrate}")
