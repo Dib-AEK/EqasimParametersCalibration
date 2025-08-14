@@ -76,12 +76,12 @@ logger.info(f"iter{args.iteration}: Starting optimization...")
 
   
 t0 = time.time()
-result = optimizer.optimize(overwrite=True)
+result = optimizer.optimize(overwrite=False)
 dt = time.time() - t0
 logger.info(f"iter{args.iteration}: Optimization completed in {int(dt//60)}:{int(dt%60):02d} minutes")
 
 # plot the optimization process
-optimizer.plot(show=True)
+optimizer.plot(show=False)
 
 #apply the momentum
 optimal_parameters = Parameters.get_parameters(parameters_to_calibrate).copy()
