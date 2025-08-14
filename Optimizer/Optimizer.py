@@ -103,29 +103,30 @@ class Optimizer(ABC):
 
     def plot(self):
         l = self.explored_solutions
-        l = [list(li) for li in l]
-        l = np.array(l)
-        o = self.explored_objectives
-        
-        fig, ax = plt.subplots(2,1,figsize=(12,8))
-        ax[0].grid(alpha=0.3)
-        ax[1].grid(alpha=0.3)
-        
-        for i,param in enumerate(self.param_names):
-            y = l[:,i]
-            x = range(len(y))
-            ax[0].scatter(x,y, label = param, s=10)
+        if len(l):
+            l = [list(li) for li in l]
+            l = np.array(l)
+            o = self.explored_objectives
             
-        ax[1].scatter(range(len(o)), o, s=10)
+            fig, ax = plt.subplots(2,1,figsize=(12,8))
+            ax[0].grid(alpha=0.3)
+            ax[1].grid(alpha=0.3)
+            
+            for i,param in enumerate(self.param_names):
+                y = l[:,i]
+                x = range(len(y))
+                ax[0].scatter(x,y, label = param, s=10)
                 
-        low, high = sorted([min(o), max(o)])        
-        ax[1].text(len(o) * 0.8, (high+low)/2, f"Min: {min(o):.3f}", fontsize=15)
-        
-        ax[0].legend(ncols=int(np.ceil(l.shape[1]/2)), loc='upper center',bbox_to_anchor=(0.5, 1.2),  frameon=False)
-
-        if self.image_path is not None:
-            plt.savefig(self.image_path, bbox_inches='tight', dpi=300)
-        plt.close()
-
+            ax[1].scatter(range(len(o)), o, s=10)
+                    
+            low, high = sorted([min(o), max(o)])        
+            ax[1].text(len(o) * 0.8, (high+low)/2, f"Min: {min(o):.3f}", fontsize=15)
+            
+            ax[0].legend(ncols=int(np.ceil(l.shape[1]/2)), loc='upper center',bbox_to_anchor=(0.5, 1.2),  frameon=False)
+    
+            if self.image_path is not None:
+                plt.savefig(self.image_path, bbox_inches='tight', dpi=300)
+            plt.close()
+    
 
 

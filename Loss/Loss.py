@@ -77,7 +77,7 @@ class Loss(Losses):
         vot_bike = 60 * BaseUtility.bike.betaTravelTime_u_min / BaseUtility.cost.betaCost_u_MU
         return dict(car=[vot_car], pt=[vot_pt], walk=[vot_walk], bike=[vot_bike])
     
-    def get_actual_mode_shares(self):
+    def get_actual_mode_shares(self, modes = None):
         """
         Returns the actual (observed) mode shares used for calibration.
     
@@ -87,7 +87,9 @@ class Loss(Losses):
         Returns:
                 - dict of mode shares
         """
-        modes = self.modes
+        if modes is None:            
+            modes = self.modes
+
         # Global and distributional actual shares (estimate it only one time for better efficiency)   
         if not hasattr(self, "_organized_mode_shares"):            
             self._organized_mode_shares =  {
@@ -106,7 +108,7 @@ class Loss(Losses):
     
         return self._organized_mode_shares
     
-    def get_estimated_mode_shares(self):
+    def get_estimated_mode_shares(self, modes = None):
         """
         Computes estimated mode shares from the tours.
         
@@ -114,7 +116,9 @@ class Loss(Losses):
             - dict of mode shares
         """
         # Use default modes if not provided        
-        modes = self.modes 
+        if modes is None:
+            modes = self.modes 
+            
         objectives = self.objectives
         mode_shares = {}
         

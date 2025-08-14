@@ -94,13 +94,19 @@ def check_and_validate_args(args):
             "it would be faster if you use the fast_calibration module in eqasim."
         )
         args.optimizer = "kai"
-        
+    else:
+        # here it means there are some betas, so switch to cmaes if optimizer is kai
+        if args.optimizer == "kai":
+            warnings.warn("Switching optimizer from 'kai' to 'cmaes' due to presence of beta parameters to be calibrated.")
+            args.optimizer = "cmaes"
+
+
     # if we want to calibrate some of the distributions too, we need to use cmaes, it is better:
-    if args.optimizer=="kai" and len(args.objectives)>1:
+    if args.optimizer == "kai" and (args.objectives != ["global"]):
         warnings.warn(
-         "Cannot use 'kai' optimizer for calibrating mode shares distributions. Switching to CMAES!"
-         )
-        args.optimizer = "cmaes"
+            "Cannot use 'kai' optimizer for calibrating mode shares distributions. Calibrating only the global mode shares!"
+        )
+        args.objectives = ["global"]
     
     # verify if the different paths provided exists
     list_of_paths = [args.variables_path, args.input_parameters, args.eqasim_cache_path]
