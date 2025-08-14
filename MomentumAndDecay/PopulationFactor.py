@@ -16,7 +16,8 @@ class PopulationFactor:
     @classmethod
     def set_population(cls, population):        
         cls._population = population
-    
+        cls._minimum_population = int(np.clip(population/2, 8000, population))
+
     @classmethod
     def set_minimum_population(cls, minimum_population):        
         cls._minimum_population = minimum_population
