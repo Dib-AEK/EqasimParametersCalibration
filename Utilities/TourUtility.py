@@ -23,6 +23,9 @@ import time
 import glob
 import os
 
+import logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 class TourUtility(BaseUtility):
     utility_estimators = {
@@ -44,13 +47,14 @@ class TourUtility(BaseUtility):
     
     @staticmethod
     def init_data(car, pt, bike, walk, cp, tours=None, population_sample = None, 
-                  eqasim_cache_dir=None, mode_shares_provider:ModeShares=None):
+                  eqasim_cache_dir=None, optimizer_cache_dir = None, mode_shares_provider:ModeShares=None):
         """
         Initializes mode-specific input data once.
         """
         TourUtility.sample = population_sample
         TourUtility.eqasim_cache_dir = eqasim_cache_dir
-        
+        TourUtility.optimizer_cache_dir = optimizer_cache_dir
+
         # if population_sample is lower then the number of agents in the dataframes, sample randomly this number of agents
         num_agents = len(tours["person_id"].unique()) if tours is not None else 0
         if (population_sample is not None) and (tours is not None) and (population_sample < num_agents):
@@ -276,24 +280,10 @@ class TourUtility(BaseUtility):
             
     
     @staticmethod
-    def add_person_attributes_to_tours(attributes=["age_class","sex","income_class","canton_id", "sp_region"]): 
-        eqasim_cache_dir = TourUtility.eqasim_cache_dir
-        if eqasim_cache_dir is None:
+    def add_person_attributes_to_tours():         
+        if TourUtility.eqasim_cache_dir is None:
             return
-        
-        persons_file = glob.glob(os.path.join(eqasim_cache_dir, "**", "*synthesis.population.enriched*.p"), recursive=True)
-        persons_file= max(persons_file, key=os.path.getctime)
-        
-        
-        persons = pd.read_pickle(persons_file)        
-        persons = persons.astype({ "age_class": int,
-                                   "sex": int,
-                                   "income_class": int,
-                                   "canton_id": int,
-                                   "sp_region":int})
-
-        persons = pl.from_pandas(persons[["person_id",*attributes]])        
-        
+        persons = TourUtility.get_persons()
         tours = TourUtility.tours.collect()
         tours = tours.join(persons, on="person_id", how="left")
         
@@ -301,14 +291,38 @@ class TourUtility(BaseUtility):
         assert tours.select(pl.col("sp_region").is_nan().sum()).item()==0, "Some spRegions are not found!"
         
         TourUtility.tours = tours.lazy()
-        
-        
+
+    @staticmethod
+    def get_persons(attributes=["age_class","sex","income_class","canton_id", "sp_region"], overwrite = False):
+        eqasim_cache_dir = TourUtility.eqasim_cache_dir
+        cache_dir = TourUtility.optimizer_cache_dir
+        hash_file = hash((eqasim_cache_dir, cache_dir))
+        file_name = os.path.join(cache_dir, f"persons_{hash_file}.parquet")
+
+        # Always include person_id              
+        if os.path.exists(file_name) and not overwrite:
+            persons = pl.read_parquet(file_name)
+            return persons.select(["person_id",*attributes])
+        else:
+            persons_file = glob.glob(os.path.join(eqasim_cache_dir, "**", "*synthesis.population.enriched*.p"), recursive=True)
+            persons_file = max(persons_file, key=os.path.getctime)
+            persons_pd = pd.read_pickle(persons_file)            
+
+            int_cols = ["age_class","sex","income_class","canton_id", "sp_region"]
+            persons_pd = persons_pd.astype({attr: int for attr in int_cols if attr in persons_pd.columns})
+
+            persons_pd.to_parquet(file_name)
+            persons = pl.from_pandas(persons_pd[["person_id",*attributes]])
+            return persons
+
     @staticmethod
     def read_and_init(tours, car, pt, bike, walk, car_passenger, 
-                      population_sample = None, eqasim_cache_dir = None,
+                      population_sample = None, eqasim_cache_dir = None, 
+                      optimizer_cache_dir = None,
                       mode_shares_provider:ModeShares=None):
-        df_tours = TourUtility.read_csv(tours)        
         
+        logger.info("Reading and initializing TourUtility with provided data files.")
+        df_tours = TourUtility.read_csv(tours)        
         
         df_bike = BikeUtility.read_csv(bike)
         df_car  = CarUtility.read_csv(car)
@@ -319,6 +333,7 @@ class TourUtility(BaseUtility):
         TourUtility.init_data(df_car, df_pt, df_bike, df_walk, df_cp, df_tours, 
                               population_sample=population_sample,
                               eqasim_cache_dir = eqasim_cache_dir,
+                              optimizer_cache_dir = optimizer_cache_dir,
                               mode_shares_provider = mode_shares_provider)
 
 

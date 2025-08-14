@@ -11,6 +11,7 @@ import os
 from MomentumAndDecay.BetaRateRise import BetaRateRise
 from MomentumAndDecay.PopulationFactor import PopulationFactor
 import json
+import time
 
 
 def parse_dict(input_str: str) -> Dict[str, float]:
@@ -109,11 +110,17 @@ def update_number_of_runs(args):
     data_hash = hash_run(args)
     json_file_path = os.path.join(cache_dir, f"run_{data_hash}.json")
 
-    # Update the number of runs in the json file
+    now = time.time()
+    four_hours = 4 * 3600
+
     if os.path.exists(json_file_path):
-        with open(json_file_path, "r") as f:
-            data = json.load(f)
-        data["number_of_runs"] += 1
+        last_modified = os.path.getmtime(json_file_path)
+        if now - last_modified > four_hours:
+            data = {"number_of_runs": 1}
+        else:
+            with open(json_file_path, "r") as f:
+                data = json.load(f)
+            data["number_of_runs"] += 1
         with open(json_file_path, "w") as f:
             json.dump(data, f)
     else:

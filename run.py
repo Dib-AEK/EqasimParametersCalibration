@@ -32,14 +32,20 @@ logger = logging.getLogger("Optimizer (Python)")
 starting_time = time.time()
 
 # parse arguments and correct arguments
-args = parse_args()    
-bounds = args.bounds
-logger.info(f"Parsed arguments: {args}")
-    
+args = parse_args()  
+args.bounds =   {'car.alpha_u': 4.0,
+                 'walk.alpha_u': 3.0,
+                 'bike.alpha_u': 3.0}
+args.optimizer = "kai"
+args.objectives  = ["global"]
+
+parameters_to_calibrate = args.bounds.keys()
+logger.info(f"Calibrated parameters: {parameters_to_calibrate}")
+
 # Get the files
 files    = get_files(args)
 
-# get beta and populatio sample
+# get beta and population
 beta, population = get_beta_and_population(args)
 
 logger.info(f"iter{args.iteration}: Population sample used for optimization: {population}")
@@ -59,13 +65,14 @@ myLoss = Loss(mode_shares_provider, metric=args.metric,
 
 # Create momentum
 momuntum = create_momentum(momentum_type=args.momentum, momentum=beta, cache_path=args.optimizer_cache)
-initial_parameters = Parameters.get_parameters(bounds.keys()).copy()
+initial_parameters = Parameters.get_parameters(parameters_to_calibrate).copy()
 momuntum.set_initial_values(initial_parameters)
 
 # loads the variables and utilities
 TourUtility.read_and_init(**files,
                           population_sample=population,
                           eqasim_cache_dir = args.eqasim_cache_path,
+                          optimizer_cache_dir = args.optimizer_cache,
                           mode_shares_provider = mode_shares_provider)
 
 # find the optimal parameters through optimization
@@ -80,7 +87,7 @@ logger.info(f"iter{args.iteration}: Optimization completed in {int(dt//60)}:{int
 optimizer.plot()
 
 #apply the momentum
-optimal_parameters = Parameters.get_parameters(bounds.keys()).copy()
+optimal_parameters = Parameters.get_parameters(parameters_to_calibrate).copy()
 momuntum.set_optimal_values(optimal_parameters)
 smoothed_optimal_values = momuntum.get_updated_values()
 Parameters.set_parameters(smoothed_optimal_values)
