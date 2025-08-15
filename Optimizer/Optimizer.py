@@ -95,6 +95,7 @@ class Optimizer(ABC):
                     lb = self.lb,
                     ub = self.ub,
                     param_names = self.param_names,
+                    initial_values = self.initial_values,
                     )
         file_path = self.cache_state_file
         # save it as json file
@@ -108,10 +109,11 @@ class Optimizer(ABC):
                 data = json.load(f)
             param_names = data.get("param_names", [])
             if (param_names==self.param_names):
-                self.lb = data.get("lb", [])
-                self.ub = data.get("ub", [])
-                self.explored_solutions = data.get("explored_solutions", [])
-                self.explored_objectives = data.get("explored_objectives", [])
+                self.lb = data["lb"]
+                self.ub = data["ub"]
+                self.explored_solutions = data["explored_solutions"]
+                self.explored_objectives = data["explored_objectives"]
+                self.initial_values = data["initial_values"]
             else:
                 logger.warning("Optimization state found in the cache, but the cached state does not match current parameters.")
         else:
