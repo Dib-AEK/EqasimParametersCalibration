@@ -405,7 +405,7 @@ class CMAESOptimizer(Optimizer):
             max_iterations = 80
             alpha = self.matsim_iteration / max_iterations
             alpha = max(min(alpha,1),0)
-            tolx = 1e-3 + (1- alpha) * (0.05 - 1e-3)
+            tolx = 1e-3 + (1- alpha) * (1e-2 - 1e-3)
         else:
             tolx = 5e-3
         return tolx
@@ -425,7 +425,7 @@ class CMAESOptimizer(Optimizer):
         options = cma.CMAOptions()
         options.set("bounds", [np.zeros_like(lb), np.ones_like(lb)])
         options.set("maxfevals", evals if evals>0 else self.max_evals)        
-        options.set("popsize", popsize)
+        # options.set("popsize", popsize)
         options.set("tolfun", 1e-3)  # Stop if function value changes less than 1e-3
         options.set("tolx", tolx)    # Stop if parameters change less than 5e-3
         options.set("seed", 1102)
@@ -476,7 +476,7 @@ class CMAESOptimizer(Optimizer):
                     
         # Run CMA-ES iterations
         iteration = 0
-        while not es.stop() or iteration < 5:
+        while not es.stop() or iteration < 10:
             solutions = es.ask()
             objectives = [self._objective(unscaler(sol), sol) for sol in solutions]
             es.tell(solutions, objectives)
