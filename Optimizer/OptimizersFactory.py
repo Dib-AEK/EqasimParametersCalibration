@@ -463,7 +463,7 @@ class CMAESOptimizer(Optimizer):
         
         #iteration = 0        
         #while (not es.stop()) and (iteration<5): #at least 5 iterations
-        for _ in range(10): # do 10 iterations each matsim iteration 
+        for _ in range(15): # do 15 iterations each matsim iteration 
             solutions = es.ask()                                           
             objectives = [self._objective(unscaler(sol), sol) for sol in solutions]                        
             es.tell(solutions, objectives)                        
