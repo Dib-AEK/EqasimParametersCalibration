@@ -407,7 +407,7 @@ class CMAESOptimizer(Optimizer):
         
         sigma = 0.3
         num_param = len(self.param_names)
-        popsize = int(8+12*np.ceil(np.log(num_param)))
+        popsize = int(12+14*np.ceil(np.log(num_param)))
         logger.info(f"    Population size is set to {popsize}")
         
         #Now, use CMA-ES optimization
@@ -437,7 +437,9 @@ class CMAESOptimizer(Optimizer):
        
         if not new_optimizer:
             es.feed_for_resume(self.explored_solutions, self.explored_objectives)
-            es.sigma = min(1e-1, es.sigma*3)
+            if es.sigma<0.1:
+                es.sigma = min(0.1, es.sigma*3)
+
             logger.info(f"Resuming CMA-ES optimization from {len(self.explored_solutions)} explored solutions.")
         else:
             self.explored_solutions, self.explored_objectives = [], []
@@ -459,13 +461,14 @@ class CMAESOptimizer(Optimizer):
                  
         es = self.get_cmaes_optimizer(scaler, unscaler, lb, ub, overwrite)                     
         
-        iteration = 0        
-        while (not es.stop()) and (iteration<5): #at least 5 iterations
+        #iteration = 0        
+        #while (not es.stop()) and (iteration<5): #at least 5 iterations
+        for _ in range(10): # do 10 iterations each matsim iteration 
             solutions = es.ask()                                           
             objectives = [self._objective(unscaler(sol), sol) for sol in solutions]                        
             es.tell(solutions, objectives)                        
             es.disp()    
-            iteration +=1            
+        #    iteration +=1            
         
         # Get the best solution among the last 1000 explored solutions (if available)
         recent_solutions = self.explored_solutions[-1000:] if len(self.explored_solutions) >= 1000 else self.explored_solutions
