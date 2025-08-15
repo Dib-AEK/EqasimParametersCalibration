@@ -437,6 +437,7 @@ class CMAESOptimizer(Optimizer):
        
         if not new_optimizer:
             es.feed_for_resume(self.explored_solutions, self.explored_objectives)
+            es.sigma = min(1e-1, es.sigma*3)
             logger.info(f"Resuming CMA-ES optimization from {len(self.explored_solutions)} explored solutions.")
         else:
             self.explored_solutions, self.explored_objectives = [], []
@@ -459,7 +460,7 @@ class CMAESOptimizer(Optimizer):
         es = self.get_cmaes_optimizer(scaler, unscaler, lb, ub, overwrite)                     
         
         iteration = 0        
-        while not es.stop():
+        while (not es.stop()) and (iteration<5): #at least 5 iterations
             solutions = es.ask()                                           
             objectives = [self._objective(unscaler(sol), sol) for sol in solutions]                        
             es.tell(solutions, objectives)                        
