@@ -470,9 +470,10 @@ class CMAESOptimizer(Optimizer):
             es.disp()    
         #    iteration +=1            
         
-        # Get the best solution among the last 1000 explored solutions (if available)
-        recent_solutions = self.explored_solutions[-1000:] if len(self.explored_solutions) >= 1000 else self.explored_solutions
-        recent_objectives = self.explored_objectives[-1000:] if len(self.explored_objectives) >= 1000 else self.explored_objectives
+        # Get the best solution among these run iterations
+        num = es.popsize * 10
+        recent_solutions = self.explored_solutions[-num:] if len(self.explored_solutions) >= num else None
+        recent_objectives = self.explored_objectives[-num:] if len(self.explored_objectives) >= num else None
 
         if recent_solutions and recent_objectives:
             best_idx = np.argmin(recent_objectives)
