@@ -400,7 +400,17 @@ class DualAnnealing(Optimizer):
 @register_optimizer("cmaes")
 class CMAESOptimizer(Optimizer):
     
-    def start_new_optimizer(self, scaler, unscaler, lb, ub, more_evals = 0):
+    def get_tolx(self):
+        if hasattr(self, "matsim_iteration"):
+            max_iterations = 80
+            alpha = self.matsim_iteration / max_iterations
+            alpha = max(min(alpha,1),0)
+            tolx = 1e-3 + (1- alpha) * (0.05 - 1e-3)
+        else:
+            tolx = 5e-3
+        return tolx
+
+    def start_new_optimizer(self, scaler, unscaler, lb, ub, evals = 0):
         import cma        
         x0 = np.array([v for k,v in self.initial_values.items()])
         x0_scaled = scaler(x0)   
@@ -411,12 +421,13 @@ class CMAESOptimizer(Optimizer):
         logger.info(f"    Population size is set to {popsize}")
         
         #Now, use CMA-ES optimization
+        tolx = self.get_tolx()
         options = cma.CMAOptions()
         options.set("bounds", [np.zeros_like(lb), np.ones_like(lb)])
-        options.set("maxfevals", self.max_evals + more_evals)        
+        options.set("maxfevals", evals if evals>0 else self.max_evals)        
         options.set("popsize", popsize)
         options.set("tolfun", 1e-3)  # Stop if function value changes less than 1e-3
-        options.set("tolx", 5e-3)    # Stop if parameters change less than 5e-3
+        options.set("tolx", tolx)    # Stop if parameters change less than 5e-3
         options.set("seed", 1102)
         es = cma.CMAEvolutionStrategy(x0_scaled, sigma, options)  
         return es
@@ -431,14 +442,14 @@ class CMAESOptimizer(Optimizer):
             or len(self.explored_objectives) == 0
             or overwrite
         )
-        more_evals= 0 if new_optimizer else int(self.max_evals*0.5)
+        evals = 0 if new_optimizer else int(len(self.explored_objectives)+self.max_evals*0.5)
 
-        es = self.start_new_optimizer(scaler, unscaler, lb, ub, more_evals=more_evals)           
+        es = self.start_new_optimizer(scaler, unscaler, lb, ub, evals=evals)           
        
         if not new_optimizer:
             es.feed_for_resume(self.explored_solutions, self.explored_objectives)
-            if es.sigma<0.1:
-                es.sigma = min(0.1, es.sigma*3)
+            if es.sigma<0.05:
+                es.sigma = min(0.05, es.sigma*3)
 
             logger.info(f"Resuming CMA-ES optimization from {len(self.explored_solutions)} explored solutions.")
         else:
@@ -447,9 +458,11 @@ class CMAESOptimizer(Optimizer):
 
         return es
         
-    def optimize(self, overwrite = False):        
+    def optimize(self, matsim_iteration = 0, overwrite = False):        
                        
         logger.info("Running CMA-ES Optimization...")
+        self.matsim_iteration = matsim_iteration
+
         # Load previous state if exists
         if not overwrite:
             self.load_state() 
@@ -458,20 +471,20 @@ class CMAESOptimizer(Optimizer):
         lb, ub = np.array(self.lb), np.array(self.ub)
         scaler = lambda x: (x - lb) / (ub - lb)
         unscaler = lambda x: x * (ub - lb) + lb
-                 
+            
         es = self.get_cmaes_optimizer(scaler, unscaler, lb, ub, overwrite)                     
-        
-        #iteration = 0        
-        #while (not es.stop()) and (iteration<5): #at least 5 iterations
-        for _ in range(15): # do 15 iterations each matsim iteration 
-            solutions = es.ask()                                           
-            objectives = [self._objective(unscaler(sol), sol) for sol in solutions]                        
-            es.tell(solutions, objectives)                        
-            es.disp()    
-        #    iteration +=1            
-        
-        # Get the best solution among these run iterations
-        num = es.popsize * 10
+                    
+        # Run CMA-ES iterations
+        iteration = 0
+        while not es.stop() or iteration < 5:
+            solutions = es.ask()
+            objectives = [self._objective(unscaler(sol), sol) for sol in solutions]
+            es.tell(solutions, objectives)
+            es.disp()
+            iteration += 1
+
+        # Get the best solution among last 5 iterations
+        num = es.popsize * 5
         recent_solutions = self.explored_solutions[-num:] if len(self.explored_solutions) >= num else None
         recent_objectives = self.explored_objectives[-num:] if len(self.explored_objectives) >= num else None
 

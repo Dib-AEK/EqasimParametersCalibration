@@ -75,7 +75,7 @@ optimizer = get_optimizer(args,  objective_function=myLoss)
 logger.info(f"iter{args.iteration}: Starting optimization...")
 
 t0 = time.time()
-result = optimizer.optimize(overwrite=False)
+result = optimizer.optimize(overwrite=False, matsim_iteration = args.iteration)
 Parameters.set_parameters(result["params"])
 dt = time.time() - t0
 logger.info(f"iter{args.iteration}: Optimization completed in {int(dt//60)}:{int(dt%60):02d} minutes")
