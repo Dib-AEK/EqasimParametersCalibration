@@ -476,7 +476,7 @@ class CMAESOptimizer(Optimizer):
         else:
             xbest = unscaler(es.result.xbest)
         
-        self.save_state(es)
+        self.save_state()
         return {"params": dict(zip(self.param_names, xbest)), "loss": es.result.fbest}    
         
 
