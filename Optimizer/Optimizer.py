@@ -16,6 +16,10 @@ from abc import ABC
 from functools import partial
 import os
 import json
+import logging
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 import matplotlib.pyplot as plt
 class Optimizer(ABC):
@@ -32,7 +36,7 @@ class Optimizer(ABC):
         self.bounds = args.bounds
         self.max_evals = args.max_evals
         self.cache_file = os.path.join(args.optimizer_cache, "optimizer_progression.p")
-        self.cache_solution_file = os.path.join(args.optimizer_cache, "optimizer_explored_solutions.json")
+        self.cache_state_file = os.path.join(args.optimizer_cache, "optimizer_state.json")
         self.args = args
 
         self.image_path = os.path.join(args.optimizer_cache, f"{args.iteration}.optimizer_progression.png")
@@ -85,29 +89,41 @@ class Optimizer(ABC):
         else:
             return []
 
-    def save_explored_solutions_and_objectives(self):
+    def save_state(self):
         data = dict(explored_solutions = self.explored_solutions,
-                    explored_objectives = self.explored_objectives)
-        file_path = self.cache_solution_file
+                    explored_objectives = self.explored_objectives,
+                    lb = self.lb,
+                    ub = self.ub,
+                    param_names = self.param_names,
+                    )
+        file_path = self.cache_state_file
         # save it as json file
         with open(file_path, "w") as f:
             json.dump(data, f)
 
-    def load_explored_solutions_and_objectives(self):
-        file_path = self.cache_solution_file
+    def load_state(self):
+        file_path = self.cache_state_file
         if os.path.exists(file_path):
             with open(file_path, "r") as f:
                 data = json.load(f)
-            self.explored_solutions = data.get("explored_solutions", [])
-            self.explored_objectives = data.get("explored_objectives", [])
+            param_names = data.get("param_names", [])
+            if (param_names==self.param_names):
+                self.lb = data.get("lb", [])
+                self.ub = data.get("ub", [])
+                self.explored_solutions = data.get("explored_solutions", [])
+                self.explored_objectives = data.get("explored_objectives", [])
+            else:
+                logger.warning("Optimization state found in the cache, but the cached state does not match current parameters.")
+        else:
+            logger.info("No optimization state found in the cache. Starting fresh.")
 
-    def plot(self, show = False):
-        l = self.explored_solutions
+    def plot(self, show = False, max_len=6000):
+        l = self.explored_solutions[-max_len:]  # get the last max_len solutions
         if len(l):
             l = [list(li) for li in l]
             l = np.array(l)
-            o = self.explored_objectives
-            
+            o = self.explored_objectives[-max_len:]  # get the last max_len objectives
+
             fig, ax = plt.subplots(2,1,figsize=(12,8))
             ax[0].grid(alpha=0.3)
             ax[1].grid(alpha=0.3)

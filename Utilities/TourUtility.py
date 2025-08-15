@@ -13,6 +13,7 @@ from Utilities.PtUtility import PtUtility
 from Utilities.WalkUtility import WalkUtility
 from Utilities.ZeroUtility import ZeroUtility
 from modeShares.ModeShares import ModeShares
+from utils.utils import stable_hash
 import pandas as pd
 import numpy as np
 from scipy.stats import qmc
@@ -296,7 +297,7 @@ class TourUtility(BaseUtility):
     def get_persons(attributes=["age_class","sex","income_class","canton_id", "sp_region"], overwrite = False):
         eqasim_cache_dir = TourUtility.eqasim_cache_dir
         cache_dir = TourUtility.optimizer_cache_dir
-        hash_file = hash((eqasim_cache_dir, cache_dir))
+        hash_file = stable_hash((eqasim_cache_dir, cache_dir))
         file_name = os.path.join(cache_dir, f"persons_{hash_file}.parquet")
 
         # Always include person_id              

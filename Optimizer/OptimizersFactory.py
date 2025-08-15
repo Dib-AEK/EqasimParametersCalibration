@@ -421,27 +421,35 @@ class CMAESOptimizer(Optimizer):
         es = cma.CMAEvolutionStrategy(x0_scaled, sigma, options)  
         return es
 
-    def get_cmaes_optimizer(self, scaler, unscaler, lb, ub, overwrite):
+    def get_cmaes_optimizer(self, scaler, unscaler, lb, ub, overwrite):        
         # the file where the cached optimizer might be stored
-        filename = self.cache_solution_file        
-        if os.path.exists(filename) and not overwrite:
-            logger.info("    Optimizer is loaded from cache")
-            es = self.load_cmaes_optimizer(scaler, unscaler, lb, ub)
-            es.sigma = min(1e-1, es.sigma*3) # to restart the search from the current state
-            
-            if not len(es.mean)==len(lb):
-                logger.info("    Optimizer dimension mismatch, creating new optimizer")
-                os.remove(filename)
-                return self.get_cmaes_optimizer(scaler, unscaler, lb, ub)
+        filename = self.cache_state_file    
+        # Ensure explored_solutions and explored_objectives are non-empty lists before resuming
+        new_optimizer = (
+            not os.path.exists(filename)
+            or len(self.explored_solutions) == 0
+            or len(self.explored_objectives) == 0
+            or overwrite
+        )
+        more_evals= 0 if new_optimizer else int(self.max_evals*0.5)
+
+        es = self.start_new_optimizer(scaler, unscaler, lb, ub, more_evals=more_evals)           
+       
+        if not new_optimizer:
+            es.feed_for_resume(self.explored_solutions, self.explored_objectives)
+            logger.info(f"Resuming CMA-ES optimization from {len(self.explored_solutions)} explored solutions.")
         else:
-            logger.info("    Optimizer is created from scratch")
-            es = self.start_new_optimizer(scaler, unscaler, lb, ub)             
-        
+            self.explored_solutions, self.explored_objectives = [], []
+            logger.info("Starting new CMA-ES optimization.")
+
         return es
         
     def optimize(self, overwrite = False):        
                        
         logger.info("Running CMA-ES Optimization...")
+        # Load previous state if exists
+        if not overwrite:
+            self.load_state() 
 
         # Convert bounds to arrays and define scaling functions
         lb, ub = np.array(self.lb), np.array(self.ub)
@@ -458,30 +466,18 @@ class CMAESOptimizer(Optimizer):
             es.disp()    
             iteration +=1            
         
-        xbest = unscaler(es.result.xbest)
+        # Get the best solution among the last 1000 explored solutions (if available)
+        recent_solutions = self.explored_solutions[-1000:] if len(self.explored_solutions) >= 1000 else self.explored_solutions
+        recent_objectives = self.explored_objectives[-1000:] if len(self.explored_objectives) >= 1000 else self.explored_objectives
+
+        if recent_solutions and recent_objectives:
+            best_idx = np.argmin(recent_objectives)
+            xbest = unscaler(recent_solutions[best_idx])
+        else:
+            xbest = unscaler(es.result.xbest)
         
-        self.save_cmaes_model(es)
-        return {"params": dict(zip(self.param_names, xbest)), "loss": es.result.fbest}
-    
-    def load_cmaes_optimizer(self, scaler, unscaler, lb, ub):                  
-        es = self.start_new_optimizer(scaler, unscaler, lb, ub, more_evals=int(self.max_evals*0.5) )
-        # Load the explored solutions and objectives
-        self.load_explored_solutions_and_objectives()
-        # resume the optimization from the last state
-        # num_to_keep = int(np.floor(self.max_evals / es.popsize)*es.popsize)
-        # self.explored_solutions = self.explored_solutions[-num_to_keep:]
-        # self.explored_objectives = self.explored_objectives[-num_to_keep:]    
-
-        es.feed_for_resume(self.explored_solutions, self.explored_objectives)
-        return es
+        self.save_state(es)
+        return {"params": dict(zip(self.param_names, xbest)), "loss": es.result.fbest}    
         
-    def save_cmaes_model(self, es): 
-        # Only save the explored solutions, not the optimizer itself
-        self.save_explored_solutions_and_objectives()
-
-
-
-
-
 
 

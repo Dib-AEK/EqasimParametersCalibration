@@ -12,6 +12,13 @@ from MomentumAndDecay.BetaRateRise import BetaRateRise
 from MomentumAndDecay.PopulationFactor import PopulationFactor
 import json
 import time
+import hashlib
+
+def stable_hash(*args):
+    m = hashlib.sha256()
+    for arg in args:
+        m.update(str(arg).encode())
+    return m.hexdigest()
 
 
 def parse_dict(input_str: str) -> Dict[str, float]:
@@ -102,7 +109,7 @@ def hash_run(args):
     optimizer = args.optimizer
     objectives = args.objectives
     # create a hash for these data and then a json file path in the cache
-    data_hash = hash((*tuple(objectives), metric, optimizer, eqasim_cache, cache_dir))
+    data_hash = stable_hash((*tuple(objectives), metric, optimizer, eqasim_cache, cache_dir))
     return data_hash
 
 def update_number_of_runs(args):
