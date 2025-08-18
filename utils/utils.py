@@ -8,11 +8,17 @@ Created on Fri May 30 16:42:45 2025
 
 from typing import Dict
 import os
+
 from MomentumAndDecay.BetaRateRise import BetaRateRise
 from MomentumAndDecay.PopulationFactor import PopulationFactor
 import json
 import time
 import hashlib
+import pandas as pd
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def stable_hash(*args):
     m = hashlib.sha256()
@@ -57,20 +63,57 @@ def check_if_files_exists(paths: list[str], check_if_files = False):
 
 def get_files(args):
     sim_path = args.variables_path
-    sim_iter = os.path.basename(sim_path).split('.')[-1]
-    
-    bike_file = f"{sim_path}/{sim_iter}.choice_variables_bike.csv"
-    pt_file = f"{sim_path}/{sim_iter}.choice_variables_pt.csv"
-    car_file = f"{sim_path}/{sim_iter}.choice_variables_car.csv"
-    walk_file = f"{sim_path}/{sim_iter}.choice_variables_walk.csv"
-    cp_file = f"{sim_path}/{sim_iter}.choice_variables_car_passenger.csv"
-    tours_file = f"{sim_path}/{sim_iter}.detailed_utilities.csv"
-    
-    files = dict(bike=bike_file, pt=pt_file, car=car_file, walk=walk_file, car_passenger=cp_file, tours = tours_file)
-    
-    check_if_files_exists(list(files.values()), check_if_files=True)
-    
-    return files
+    if isinstance(sim_path, str):
+        sim_iter = os.path.basename(sim_path).split('.')[-1]
+        bike_file = os.path.join(sim_path, f"{sim_iter}.choice_variables_bike.csv")
+        pt_file = os.path.join(sim_path, f"{sim_iter}.choice_variables_pt.csv")
+        car_file = os.path.join(sim_path, f"{sim_iter}.choice_variables_car.csv")
+        walk_file = os.path.join(sim_path, f"{sim_iter}.choice_variables_walk.csv")
+        cp_file = os.path.join(sim_path, f"{sim_iter}.choice_variables_car_passenger.csv")
+        tours_file = os.path.join(sim_path, f"{sim_iter}.detailed_utilities.csv")
+
+        files = {
+            "bike": bike_file,
+            "pt": pt_file,
+            "car": car_file,
+            "walk": walk_file,
+            "car_passenger": cp_file,
+            "tours": tours_file
+        }
+
+        check_if_files_exists(list(files.values()), check_if_files=True)
+        return files
+    else:
+        logger.info("Multiple simulation paths provided, concatenating files.")
+
+        all_files = []
+        for sim_path_i in sim_path:
+            updated_args = args._replace(variables_path=sim_path_i)
+            all_files.append(get_files(updated_args))
+
+        cache_path = args.optimizer_cache
+        concatenated_files = {}
+
+        for key in all_files[0].keys():
+            new_file_path = os.path.join(cache_path, f"{key}.csv")
+            df_list = []
+            person_ids = set()
+            for files_dict in all_files:
+                df = pd.read_csv(files_dict[key])
+                # Exclude duplicate person_ids
+                df = df[~df["person_id"].isin(person_ids)]
+                person_ids.update(df["person_id"].unique())
+                df_list.append(df)
+            
+            combined_df = pd.concat(df_list, ignore_index=True)
+            combined_df.to_csv(new_file_path, index=False)
+
+            concatenated_files[key] = new_file_path
+
+        return concatenated_files
+
+
+
 
 
 def get_beta_and_population(args, beta_method = "step", population_method = "step"):

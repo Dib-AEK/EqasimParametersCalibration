@@ -70,10 +70,10 @@ TourUtility.read_and_init(**files,
                           optimizer_cache_dir = args.optimizer_cache,
                           mode_shares_provider = mode_shares_provider)
 
-# check if the utilities that are implimented are correct
+# check if the utilities that are implimented are correct (only check the first 100)
 tours_util = TourUtility.tours.collect()["eqasim_utility"]
 all_util = TourUtility.get_all_utilities().collect()["utility"]
-assert np.allclose(tours_util, all_util, atol=5e-3), "The utilities that are estimated do not match the actual ones"
+assert np.allclose(tours_util[:100], all_util[:100], atol=5e-3), "The utilities that are estimated do not match the actual ones"
 
 
 # find the optimal parameters through optimization

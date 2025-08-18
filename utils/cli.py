@@ -116,6 +116,9 @@ def check_and_validate_args(args):
     if not os.path.exists(args.optimizer_cache):
         os.makedirs(args.optimizer_cache)
 
+    if "," in args.variables_path:
+        args.variables_path = args.variables_path.split(",")
+        
     return args
         
         
