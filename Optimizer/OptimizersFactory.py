@@ -475,16 +475,20 @@ class CMAESOptimizer(Optimizer):
         es = self.get_cmaes_optimizer(scaler, unscaler, lb, ub, overwrite)                     
                     
         # Run CMA-ES iterations
-        iteration = 0
-        while not es.stop() or iteration < 10:
+        iteration = 0  
+        keep_runing = True   
+        tolx = self.get_tolx()           
+        while keep_runing or iteration < 15:
             solutions = es.ask()
             objectives = [self._objective(unscaler(sol), sol) for sol in solutions]
             es.tell(solutions, objectives)
             es.disp()
             iteration += 1
 
-        # Get the best solution among last 5 iterations
-        num = es.popsize * 5
+            keep_runing = not np.allclose(solutions[1:], solutions[:-1], atol=tolx)
+
+        # Get the best solution among last 10 iterations
+        num = es.popsize * 10
         recent_solutions = self.explored_solutions[-num:] if len(self.explored_solutions) >= num else None
         recent_objectives = self.explored_objectives[-num:] if len(self.explored_objectives) >= num else None
 
