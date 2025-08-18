@@ -88,7 +88,8 @@ def get_files(args):
 
         all_files = []
         for sim_path_i in sim_path:
-            updated_args = args._replace(variables_path=sim_path_i)
+            updated_args = args
+            updated_args.variables_path = sim_path_i
             all_files.append(get_files(updated_args))
 
         cache_path = args.optimizer_cache
@@ -99,7 +100,7 @@ def get_files(args):
             df_list = []
             person_ids = set()
             for files_dict in all_files:
-                df = pd.read_csv(files_dict[key])
+                df = pd.read_csv(files_dict[key], sep=";")
                 # Exclude duplicate person_ids
                 df = df[~df["person_id"].isin(person_ids)]
                 person_ids.update(df["person_id"].unique())
