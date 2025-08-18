@@ -107,7 +107,7 @@ def get_files(args):
                 df_list.append(df)
             
             combined_df = pd.concat(df_list, ignore_index=True)
-            combined_df.to_csv(new_file_path, index=False)
+            combined_df.to_csv(new_file_path, sep=";", index=False)
 
             concatenated_files[key] = new_file_path
 
