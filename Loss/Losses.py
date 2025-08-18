@@ -74,7 +74,7 @@ class Losses(ABC):
         else:
             raise ValueError(f"Unknown loss metric: '{self.metric}'")
         
-        epsilon = 1e-4 
+        epsilon = 1e-2 #less then 1% are not considered
         def loss_func(x,y):
             sel = (x>epsilon)
             return func(x[sel],y[sel])

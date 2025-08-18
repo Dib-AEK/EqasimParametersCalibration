@@ -29,12 +29,12 @@ POSSIBLE_OBJECTIVES = ["global","distance","canton","age","income","sp_region",
 ATTR_TO_COL = {"age":"age_class","income":'income_class',"canton":"canton_id",
                "distance":"distance_class", "sp_region":"sp_region"}
 
-WEIGHTS = {"global":2.0,"distance":1.0, "mode_distance":1,
+WEIGHTS = {"global":1.5,"distance":1.0, "mode_distance":1,
            "vot":1/5e5,
            "canton":0.5,"age":0.3,"income":0.5, "sp_region":1.0, 
             "mode_income":0.5,"mode_age":0.3,"mode_canton":0.5}
 
-WEIGHT_MODE = {"pt":1.0,"car":1.0,"walk":2.0,"bike":2.0,"car_passenger":1.0} #because walk and bike all zeros for long trips, used only for distance distributions
+WEIGHT_MODE = {"pt":1.0,"car":1.0,"walk":2.0,"bike":2.5,"car_passenger":1.0} #because walk and bike all zeros for long trips, used only for distance distributions
 
 SELECTED_MODE = {"sp_region":['car','pt']} #must be dict of list, for each attributes, if we want to include only some of the modes, not all of them
 
@@ -188,16 +188,12 @@ class Loss(Losses):
             float: Total loss scaled by log to highligh minima
         """
         metric = self.metric.lower()
-        loss_func = self.get_loss_func(metric)
-        all_mode_weights = self.calibrated_modes_weights
+        loss_func = self.get_loss_func(metric)        
         cal_modes = self.calibration_modes
         
         vectors = self._vectors()    
         loss = 0.0
         total_weights = 0.0
-        
-        if "global" in self.objectives:
-            assert all_mode_weights.shape==vectors["global"][0].shape
         
         for k,(actual,estimated) in vectors.items():
             weight = WEIGHTS[k]  # weight of the objective
@@ -216,7 +212,7 @@ class Loss(Losses):
                 # Add the loss of the first bin, it controls better the alphas
                 xd0 = (actual[:,:1]*mode_weight)[sel_mode].flatten()
                 yd0 = (estimated[:,:1]*mode_weight)[sel_mode].flatten()
-                k_loss += loss_func(xd0, yd0)
+                k_loss += 2.5*loss_func(xd0, yd0)
                 
             self.losses_record[k].append(k_loss)
             loss += weight*k_loss
