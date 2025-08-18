@@ -28,7 +28,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-parameters", type=str, default='testsAndParams/modeChoiceOptimizedParameters.yml',
                         help="Path to output optimized YAML parameters file.")
     
-    parser.add_argument("--variables-path", type=str, default='testsAndParams/it.60',
+    parser.add_argument("--variables-path", type=str, default='C:/Users/dabdelkader/Desktop/work/codes/Calibration/EqasimParametersCalibration/testsAndParams/it.60',
                         help="Base path to simulation outputs.")
     
     parser.add_argument("--eqasim-cache-path", type=str, default="Z:/ch-zh-synpop/cache10p100",
@@ -118,7 +118,10 @@ def check_and_validate_args(args):
 
     # verify if the different paths provided exists
     list_of_paths = [args.input_parameters, args.eqasim_cache_path]
-    list_of_paths.extend(args.variables_path)
+    if isinstance(args.variables_path, list):
+        list_of_paths.extend(args.variables_path)
+    else:
+        list_of_paths.append(args.variables_path)
     check_if_files_exists(list_of_paths)
     return args
         
