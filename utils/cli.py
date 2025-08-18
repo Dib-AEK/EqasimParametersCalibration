@@ -108,9 +108,6 @@ def check_and_validate_args(args):
         )
         args.objectives = ["global"]
     
-    # verify if the different paths provided exists
-    list_of_paths = [args.variables_path, args.input_parameters, args.eqasim_cache_path]
-    check_if_files_exists(list_of_paths)
 
     # if optimizer path doesn't exist, create it
     if not os.path.exists(args.optimizer_cache):
@@ -118,7 +115,11 @@ def check_and_validate_args(args):
 
     if "," in args.variables_path:
         args.variables_path = args.variables_path.split(",")
-        
+
+    # verify if the different paths provided exists
+    list_of_paths = [args.input_parameters, args.eqasim_cache_path]
+    list_of_paths.extend(args.variables_path)
+    check_if_files_exists(list_of_paths)
     return args
         
         
