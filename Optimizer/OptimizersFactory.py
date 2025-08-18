@@ -424,8 +424,8 @@ class CMAESOptimizer(Optimizer):
         tolx = self.get_tolx()
         options = cma.CMAOptions()
         options.set("bounds", [np.zeros_like(lb), np.ones_like(lb)])
-        options.set("maxfevals", evals if evals>0 else self.max_evals)        
-        # options.set("popsize", popsize)
+        #options.set("maxfevals", evals if evals>0 else self.max_evals)        
+        options.set("popsize", popsize)
         options.set("tolfun", 1e-3)  # Stop if function value changes less than 1e-3
         options.set("tolx", tolx)    # Stop if parameters change less than 5e-3
         options.set("seed", 1102)
@@ -447,9 +447,10 @@ class CMAESOptimizer(Optimizer):
         es = self.start_new_optimizer(scaler, unscaler, lb, ub, evals=evals)           
        
         if not new_optimizer:
-            es.feed_for_resume(self.explored_solutions, self.explored_objectives)
-            if es.sigma<0.05:
-                es.sigma = min(0.05, es.sigma*3)
+            num_last_iterations = (2000//es.popsize) * es.popsize
+            es.feed_for_resume(self.explored_solutions[-num_last_iterations:], self.explored_objectives[-num_last_iterations:])
+            if es.sigma<0.08:
+                es.sigma = min(0.08, es.sigma*3)
 
             logger.info(f"Resuming CMA-ES optimization from {len(self.explored_solutions)} explored solutions.")
         else:
