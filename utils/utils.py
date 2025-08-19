@@ -16,6 +16,7 @@ import time
 import hashlib
 import pandas as pd
 import logging
+import polars as pl
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -100,14 +101,14 @@ def get_files(args):
             df_list = []
             person_ids = set()
             for files_dict in all_files:
-                df = pd.read_csv(files_dict[key], sep=";")
+                df = pl.read_csv(files_dict[key], separator=";")
                 # Exclude duplicate person_ids
-                df = df[~df["person_id"].isin(person_ids)]
-                person_ids.update(df["person_id"].unique())
+                df = df.filter(~df["person_id"].is_in(list(person_ids)))
+                person_ids.update(df["person_id"].unique().to_list())
                 df_list.append(df)
             
-            combined_df = pd.concat(df_list, ignore_index=True)
-            combined_df.to_csv(new_file_path, sep=";", index=False)
+            combined_df = pl.concat(df_list, how="vertical")
+            combined_df.write_csv(new_file_path, separator=";")
 
             concatenated_files[key] = new_file_path
 
