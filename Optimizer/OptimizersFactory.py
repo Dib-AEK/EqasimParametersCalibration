@@ -410,6 +410,13 @@ class CMAESOptimizer(Optimizer):
             tolx = 5e-3
         return tolx
 
+    def get_min_sigma(self):
+        if hasattr(self, "matsim_iteration"):
+            min_sigma = 5e-2 + 0.15 * (self.matsim_iteration % 10 == 0)
+        else:
+            min_sigma = 5e-2
+        return min_sigma
+
     def start_new_optimizer(self, scaler, unscaler, lb, ub, evals = 0):
         import cma        
         x0 = np.array([v for k,v in self.initial_values.items()])
@@ -449,8 +456,9 @@ class CMAESOptimizer(Optimizer):
         if not new_optimizer:
             num_last_iterations = (2000//es.popsize) * es.popsize
             es.feed_for_resume(self.explored_solutions[-num_last_iterations:], self.explored_objectives[-num_last_iterations:])
-            if es.sigma<0.08:
-                es.sigma = min(0.08, es.sigma*3)
+            min_sigma = self.get_min_sigma()
+            if es.sigma<min_sigma:
+                es.sigma = min_sigma
 
             logger.info(f"Resuming CMA-ES optimization from {len(self.explored_solutions)} explored solutions.")
         else:
