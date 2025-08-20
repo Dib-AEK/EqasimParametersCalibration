@@ -29,7 +29,7 @@ POSSIBLE_OBJECTIVES = ["global","distance","canton","age","income","sp_region",
 ATTR_TO_COL = {"age":"age_class","income":'income_class',"canton":"canton_id",
                "distance":"distance_class", "sp_region":"sp_region"}
 
-WEIGHTS = {"global":1.5,"distance":1.0, "mode_distance":1,
+WEIGHTS = {"global":2.5,"distance":1.0, "mode_distance":1,
            "vot":1/5e5,
            "canton":0.5,"age":0.3,"income":0.5, "sp_region":1.0, 
             "mode_income":0.5,"mode_age":0.3,"mode_canton":0.5}
