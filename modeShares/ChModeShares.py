@@ -44,7 +44,7 @@ class ChModeShares(ModeShares):
             self._setup_files()
             self.trips, self.transit = self._load_data()
             
-            self.distance_bins = distance_bins if distance_bins is not None else \
+            self.distance_bins = distance_bins if (distance_bins is not None and len(distance_bins)) else \
                                 [0, 1000, 2000, 3000, 4000, 5000, 8000, 12000, 20000, 1000000]
             
             self.distance_labels = [

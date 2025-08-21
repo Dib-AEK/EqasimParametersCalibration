@@ -54,7 +54,8 @@ logger.info(f"iter{args.iteration}: Initial parameters loaded from: {args.input_
 Selector.set_selector(args.selector)
 
 # define the Loss
-mode_shares_provider = ChModeShares(args.eqasim_cache_path, cache_dir = args.optimizer_cache, overwrite=False)
+mode_shares_provider = ChModeShares(args.eqasim_cache_path, cache_dir = args.optimizer_cache, 
+                                    overwrite=False, distance_bins=args.distance_bins)
 myLoss = Loss(mode_shares_provider, metric=args.metric,
               objectives = args.objectives)
 

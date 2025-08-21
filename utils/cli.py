@@ -73,6 +73,10 @@ def parse_args() -> argparse.Namespace:
                         help="Objectives to optimize")
     
     parser.add_argument("--optimizer-cache", type=str, default="optimizerCache")
+    
+    parser.add_argument("--distance-bins", type=str, default="",
+                        help="distance bins when estimating mode shares distributions")
+
     return check_and_validate_args(parser.parse_args())
 
 
@@ -123,6 +127,13 @@ def check_and_validate_args(args):
     else:
         list_of_paths.append(args.variables_path)
     check_if_files_exists(list_of_paths)
+    
+    # check if distance bins are provided
+    if args.distance_bins!="":
+        args.distance_bins = [float(i) for i in args.distance_bins.split(",")]
+    else:
+        args.distance_bins = None
+
     return args
         
         
