@@ -12,6 +12,11 @@ import pandas as pd
 import polars as pl
 import random
 
+# fix the seed for reproducibility
+random.seed(1102)
+np.random.seed(1102)
+
+
 class Selector():
     minimum_utility = -700.0
     maximum_utility = 700.0

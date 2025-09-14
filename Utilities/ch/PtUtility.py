@@ -5,8 +5,8 @@ Created on Wed May 21 18:16:46 2025
 
 @author: dabdelkader
 """
-from Utilities.CarUtility import CarUtility
-from Utilities.BaseUtility import BaseUtility
+from .CarUtility import CarUtility
+from .BaseUtility import BaseUtility
 import pandas as pd
 import polars as pl
 

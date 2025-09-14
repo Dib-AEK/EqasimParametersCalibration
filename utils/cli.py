@@ -17,24 +17,24 @@ logging.basicConfig(level=logging.INFO)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Mode share optimization tool.")
+    parser = argparse.ArgumentParser(description="Utilities parameters optimization tool.")
     parser.add_argument("--selector", type=str, default="MultinomialLogit",
                         choices=["MultinomialLogit", "Maximum"],
                         help="Selector class to use (default: MaximumUtilitySelector)")
-    
-    parser.add_argument("--input-parameters", type=str, default='testsAndParams/modeChoiceParameters.yml',
+
+    parser.add_argument("--input-parameters", type=str, default='Z:/ch-zh-synpop/output5p100/ch2/model_parameters_wExponents.yaml',
                         help="Path to input YAML parameters file.")
-    
-    parser.add_argument("--output-parameters", type=str, default='testsAndParams/modeChoiceOptimizedParameters.yml',
+
+    parser.add_argument("--output-parameters", type=str, default='testsAndParams/detailedModeChoiceOptimizedParameters.yml',
                         help="Path to output optimized YAML parameters file.")
-    
-    parser.add_argument("--variables-path", type=str, default='C:/Users/dabdelkader/Desktop/work/codes/Calibration/EqasimParametersCalibration/testsAndParams/it.60',
+
+    parser.add_argument("--variables-path", type=str, default='Z:/ch-zh-synpop/output5p100/ch2/simulation_output_cal_test/ITERS/it.58',
                         help="Base path to simulation outputs.")
     
     parser.add_argument("--eqasim-cache-path", type=str, default="Z:/ch-zh-synpop/cache10p100",
                         help="Base path to the cache dir of the synpop in order to get mode shares from microsensus.")
     
-    parser.add_argument("--iteration", type=int, default=60,
+    parser.add_argument("--iteration", type=int, default=58,
                         help="Iteration number to read simulation files from.")        
     
     parser.add_argument("--bounds", type=str,
@@ -49,14 +49,14 @@ def parse_args() -> argparse.Namespace:
                         help="Parameter bounds as comma-separated key:value pairs")
     
     parser.add_argument("--metric", type=str, default="mse",
-                        choices=["mse", "mae", "cosine", "kl", "js", "hellinger", "tv"],
+                        choices=["mse", "mae", "cosine", "kl", "js", "hellinger", "tv", "ll"],
                         help="Metric to use for loss calculation")
     
-    parser.add_argument("--optimizer", type=str, default="cmaes",
+    parser.add_argument("--optimizer", type=str, default="Nelder-Mead",
                         choices=["ga", "pso", "random", "bayesian", "tpe", "cmaes", "spsa", "adam",
                                  'Nelder-Mead', 'Powell', 'CG', 'BFGS', 'Newton-CG', 'L-BFGS-B',
                                  'TNC', 'COBYLA', 'COBYQA', 'SLSQP', 'trust-constr', 'dogleg',
-                                 'trust-ncg', 'trust-exact', 'trust-krylov', 'dual_annealing', "kai"],
+                                 'trust-ncg', 'trust-exact', 'trust-krylov', 'dual_annealing', "Nelder-Mead", "kai"],
                         help="Optimization algorithm to use")
     
     parser.add_argument("--momentum", type=str, default="ema", choices=["ema", "adam"],
@@ -73,9 +73,14 @@ def parse_args() -> argparse.Namespace:
                         help="Objectives to optimize")
     
     parser.add_argument("--optimizer-cache", type=str, default="optimizerCache")
-    
-    parser.add_argument("--distance-bins", type=str, default="",
+
+    parser.add_argument("--distance-bins", type=str, default="0,275,451,683,995,1513,2400,3853,5026,6674,9261,13788,22976,1000000",
                         help="distance bins when estimating mode shares distributions")
+    
+    parser.add_argument("--modes-in-loss", type=str, default="car,pt,walk,bike",
+                    help="modes to include in the loss calculation")
+    
+    parser.add_argument("--utilities", choices=["ch", "ch_cmdp"], default="ch")
 
     return check_and_validate_args(parser.parse_args())
 
@@ -84,6 +89,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def check_and_validate_args(args):
+    # Set the backend for utilities
+    from Utilities import set_backend
+    set_backend(args.utilities)
+
     # Turn bounds into a dict and objectives into list
     args.bounds = parse_dict(args.bounds)
     args.objectives = parse_list(args.objectives)     
@@ -130,9 +139,12 @@ def check_and_validate_args(args):
     
     # check if distance bins are provided
     if args.distance_bins!="":
-        args.distance_bins = [float(i) for i in args.distance_bins.split(",")]
+        args.distance_bins = [int(i) for i in args.distance_bins.split(",")]
     else:
         args.distance_bins = None
+
+    # check if modes in loss are provided
+    args.modes_in_loss = [m.strip() for m in args.modes_in_loss.split(",")]
 
     return args
         

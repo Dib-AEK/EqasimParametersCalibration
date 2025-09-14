@@ -6,7 +6,7 @@ Created on Thu May 22 10:12:48 2025
 @author: dabdelkader
 """
 
-from Utilities.BaseUtility import BaseUtility
+from .BaseUtility import BaseUtility
 import pandas as pd
 import numpy as np
 import polars as pl

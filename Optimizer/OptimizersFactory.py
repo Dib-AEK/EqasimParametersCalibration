@@ -9,6 +9,7 @@ from Optimizer.Optimizer import Optimizer
 from Utilities.BaseUtility import BaseUtility
 import os
 import numpy as np
+import random
 import pickle 
 import logging
 logger = logging.getLogger(__name__)
@@ -21,6 +22,9 @@ scipy_methods = [ 'Nelder-Mead','Powell', 'CG',  'BFGS', 'Newton-CG','L-BFGS-B',
                  'TNC', 'COBYLA','COBYQA','SLSQP','trust-constr','dogleg','trust-ncg',
                  'trust-exact','trust-krylov']
 
+# fix the seed for reproducibility
+random.seed(1102)
+np.random.seed(1102)
 
 def register_optimizer(name):
     def decorator(cls):
@@ -105,8 +109,7 @@ class TPEOptimizer(Optimizer):
 @register_optimizer("pso")
 class PSOOptimizer(Optimizer):
     def optimize(self):
-        import pyswarms as ps
-        import numpy as np
+        import pyswarms as ps        
 
         logger.info("Running Particle Swarm Optimization...")
 
@@ -131,10 +134,8 @@ class PSOOptimizer(Optimizer):
 
 @register_optimizer("ga")
 class GAOptimizer(Optimizer):
-    def optimize(self):
-        import random
-        from deap import base, creator, tools, algorithms
-        import numpy as np
+    def optimize(self):        
+        from deap import base, creator, tools, algorithms        
 
         logger.info("Running Genetic Algorithm...")
 
@@ -181,8 +182,7 @@ class GAOptimizer(Optimizer):
 
 @register_optimizer("spsa")
 class SPSAOptimizer(Optimizer):
-    def optimize(self):
-        import numpy as np
+    def optimize(self):        
         import spsa
 
         logger.info("Running SPSA Optimization using spsa.minimize...")
@@ -210,8 +210,7 @@ class SPSAOptimizer(Optimizer):
     
 @register_optimizer("adam")
 class FiniteDifferenceAdamOptimizer(Optimizer):
-    def optimize(self):
-        import numpy as np
+    def optimize(self):        
         from tqdm import tqdm
         logger.info("Running Adam Optimization with Finite-Difference Gradient Estimation...")
 
@@ -274,8 +273,7 @@ class FiniteDifferenceAdamOptimizer(Optimizer):
 
 @register_optimizer("kai")
 class KaiOptimizer(Optimizer):
-    def optimize(self):
-        import numpy as np        
+    def optimize(self, *args, **kwargs):        
         logger.info("Using Kai utility calibration formula...")
 
         modes = ["pt", "car", "walk", "bike", "car_passenger"]
@@ -327,10 +325,10 @@ class KaiOptimizer(Optimizer):
         return {"params": optimal_params, "loss": diff if optimal_params is not None else np.nan}
 
     def _one_iteration(self, simulated_mode_shares, actual_mode_shares, iteration, beta = 0.8, reference_mode = "pt"):        
-        calibrated_modes = ["pt", "car", "walk", "bike"]        
+        calibrated_modes = self.modes_to_calibrate.copy()
         calibrated_modes.remove(reference_mode)
         
-        params = [f"{mode}.alpha_u" for mode in calibrated_modes]
+        params = [f"{mode.replace("car_passenger","cp")}.alpha_u" for mode in calibrated_modes]
         
         initial_parameters_values = self.get_current_parameters(params)
 
@@ -354,10 +352,10 @@ class KaiOptimizer(Optimizer):
 
 
     def get_reference_mode(self):
-        all_modes = ["pt", "car", "walk", "bike"]
-        params = [f"{mode}.alpha_u" for mode in all_modes]
+        all_modes = self.modes_to_calibrate.copy()
+        params = [f"{mode.replace("car_passenger","cp")}.alpha_u" for mode in all_modes]
         # reference mode is supposed to be the mode not present in the bounds
-        keys = self.bounds.keys()
+        keys = [k for k in self.bounds.keys() if "alpha" in k]
         reference_mode = list(set(params)-set(keys))
         assert len(reference_mode)==1, "If you are only calibrating the betas, there should be exactly one reference mode. All other alphas are adjusted."
         reference_mode = reference_mode[0].split('.')[0]
@@ -372,15 +370,34 @@ class ScipyOptimizer(Optimizer):
     def set_method(self, method):
         ScipyOptimizer.method = method
         
-    def optimize(self):
+    def optimize(self, matsim_iteration = 0, overwrite = False):
         from scipy.optimize import minimize
 
         logger.info(f"Running {ScipyOptimizer.method} Optimization...")
-        x0 = [v for k,v in self.initial_values.items()]
-        res = minimize(self._objective, 
-                       x0=x0, 
-                       bounds=list(zip(self.lb, self.ub)),
-                       method=ScipyOptimizer.method)
+        
+        if not overwrite:
+            self.load_state()
+
+        if len(self.explored_solutions):
+            x0 = self.explored_solutions[-1]
+        else:
+            x0 = [v for _,v in self.initial_values.items()]
+
+        def callback(xk):
+            callback.iter = getattr(callback, 'iter', -1) + 1
+            if callback.iter % 50 == 0:
+                logger.info(f"Iteration: {callback.iter}, Current params: {xk}")
+
+        res = minimize(
+            self._objective,
+            x0=x0,
+            bounds=list(zip(self.lb, self.ub)),
+            method=ScipyOptimizer.method,
+            callback=callback,
+            options={"maxiter": self.max_evals}
+        )
+        
+        self.save_state()
         return {"params": dict(zip(self.param_names, res.x)), "loss": res.fun}
         
 
@@ -419,12 +436,12 @@ class CMAESOptimizer(Optimizer):
 
     def start_new_optimizer(self, scaler, unscaler, lb, ub, evals = 0):
         import cma        
-        x0 = np.array([v for k,v in self.initial_values.items()])
+        x0 = np.array([v for _,v in self.initial_values.items()])
         x0_scaled = scaler(x0)   
         
         sigma = 0.3
         num_param = len(self.param_names)
-        popsize = int(12+14*np.ceil(np.log(num_param)))
+        popsize = min(int(12+14*np.ceil(np.log(num_param))), 40)
         logger.info(f"    Population size is set to {popsize}")
         
         #Now, use CMA-ES optimization
@@ -454,11 +471,11 @@ class CMAESOptimizer(Optimizer):
         es = self.start_new_optimizer(scaler, unscaler, lb, ub, evals=evals)           
        
         if not new_optimizer:
-            num_last_iterations = (2000//es.popsize) * es.popsize
+            number_of_points = min(2000, len(self.explored_objectives))
+            num_last_iterations = (number_of_points//es.popsize) * es.popsize
             es.feed_for_resume(self.explored_solutions[-num_last_iterations:], self.explored_objectives[-num_last_iterations:])
             min_sigma = self.get_min_sigma()
-            if es.sigma<min_sigma:
-                es.sigma = min_sigma
+            es.sigma = max(es.sigma, min_sigma)
 
             logger.info(f"Resuming CMA-ES optimization from {len(self.explored_solutions)} explored solutions.")
         else:
@@ -512,3 +529,6 @@ class CMAESOptimizer(Optimizer):
         
 
 
+def get_optimal_alphas(args, myLoss):        
+    optimizer = KaiOptimizer(args,  objective_function=myLoss)
+    return optimizer.optimize(overwrite=True, matsim_iteration = args.iteration)        

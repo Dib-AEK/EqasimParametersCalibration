@@ -34,7 +34,7 @@ WEIGHTS = {"global":2.5,"distance":1.0, "mode_distance":1,
            "canton":0.5,"age":0.3,"income":0.5, "sp_region":1.0, 
             "mode_income":0.5,"mode_age":0.3,"mode_canton":0.5}
 
-WEIGHT_MODE = {"pt":1.0,"car":1.0,"walk":1.7,"bike":2.0,"car_passenger":1.0} #because walk and bike all zeros for long trips, used only for distance distributions
+WEIGHT_MODE = {"pt":1.0,"car":1.0,"walk":1.7,"bike":2.0,"car_passenger":1.3} #because walk and bike all zeros for long trips, used only for distance distributions
 
 SELECTED_MODE = {"sp_region":['car','pt']} #must be dict of list, for each attributes, if we want to include only some of the modes, not all of them
 
@@ -48,7 +48,8 @@ class Loss(Losses):
     
     def __init__(self, mode_shares_provider: ModeShares,
                        metric = "mse", 
-                       objectives:list = None):
+                       objectives:list = None, 
+                       modes_in_loss: list = ["car","pt","bike","walk"]):
           
         super().__init__(metric)
         
@@ -63,7 +64,7 @@ class Loss(Losses):
             self.objectives = ["global", "distance", "mode_distance"]
         
         self.modes = ["car","walk","bike","pt","car_passenger"]   #Should be all simulated modes       
-        self.calibration_modes = ["car","pt","bike","walk"]  #calibration modes are only the modes whose losses are considered as objective to minimize
+        self.calibration_modes = modes_in_loss #calibration modes are only the modes whose losses are considered as objective to minimize
         self.calibrated_modes_weights = np.array([WEIGHT_MODE[mode] for mode in self.calibration_modes]).reshape(-1,1)
         self.calibrated_modes_weights_vot = np.array([WEIGHT_MODE_VOT[mode] for mode in self.calibration_modes]).reshape(-1,1)
         
@@ -75,6 +76,10 @@ class Loss(Losses):
         vot_pt   = 60 * BaseUtility.pt.betaInVehicleTime_u_min / BaseUtility.cost.betaCost_u_MU
         vot_walk = 60 * BaseUtility.walk.betaTravelTime_u_min / BaseUtility.cost.betaCost_u_MU
         vot_bike = 60 * BaseUtility.bike.betaTravelTime_u_min / BaseUtility.cost.betaCost_u_MU
+        if 'car_passenger' in self.calibration_modes:
+            vot_cp   = 60 * BaseUtility.cp.betaTravelTime_u_min / BaseUtility.cost.betaCost_u_MU
+            return dict(car=[vot_car], pt=[vot_pt], walk=[vot_walk], bike=[vot_bike], car_passenger=[vot_cp])
+        
         return dict(car=[vot_car], pt=[vot_pt], walk=[vot_walk], bike=[vot_bike])
     
     def get_actual_mode_shares(self, modes = None):
@@ -168,7 +173,7 @@ class Loss(Losses):
             actual_obj = actual[obj]
             estimated_obj = estimated[obj]            
                 
-            ignore = -1 if "distance" in obj else None
+            ignore = None #-1 if "distance" in obj else None
             estimated_vec = np.array([estimated_obj[mode][:ignore] for mode in modes]) # Explicit access by mode to raise an error if a mode is missing
             actual_vec = np.array([actual_obj[mode][:ignore] for mode in modes])
     
@@ -217,8 +222,9 @@ class Loss(Losses):
             self.losses_record[k].append(k_loss)
             loss += weight*k_loss
             total_weights += weight
-              
-        return np.log(loss/(10*total_weights)) # I use the log because it highlights better the minima
+        
+        eps = 0.0 if metric in ["mse, mae","mape"] else 0.2
+        return np.log(eps + loss/(10*total_weights)) # I use the log because it highlights better the minima
 
     
 

@@ -35,10 +35,12 @@ class Optimizer(ABC):
         self.objective_function = objective_function
         self.bounds = args.bounds
         self.max_evals = args.max_evals
-        self.cache_file = os.path.join(args.optimizer_cache, "optimizer_progression.p")
-        self.cache_state_file = os.path.join(args.optimizer_cache, "optimizer_state.json")
+        optimizer = args.optimizer.lower()
+        self.cache_file = os.path.join(args.optimizer_cache, f"{optimizer}_optimizer_progression.p")
+        self.cache_state_file = os.path.join(args.optimizer_cache, f"{optimizer}_optimizer_state.json")
         self.args = args
-
+        self.modes_to_calibrate = args.modes_in_loss
+        
         self.image_path = os.path.join(args.optimizer_cache, f"{args.iteration}.optimizer_progression.png")
         # Get initial values from BaseUtility
         self.param_names = list(self.bounds.keys())
@@ -52,13 +54,18 @@ class Optimizer(ABC):
         self.explored_objectives = []
 
     @abstractmethod
-    def optimize(self, *args, **kwargs) -> Dict[str, Any]:
+    def optimize(self, *args, overwrite=False, **kwargs) -> Dict[str, Any]:
         """
         Run the optimization and return the best result.
+
+        Parameters:
+        - overwrite: If True, load the optimizer state from cache before starting.
 
         Returns:
         - Dict containing 'params' and 'loss'
         """
+        if not overwrite:
+            self.load_state()
         pass
 
     def _objective(self, parameters: list, scaled_params:list=None) -> float:

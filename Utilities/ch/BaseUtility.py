@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod, ABCMeta
 import pandas as pd
 import numpy as np
 import polars as pl
-from Utilities.Parameters import Parameters
+from .Parameters import Parameters
 
 class MetaCls(ABCMeta):
     """

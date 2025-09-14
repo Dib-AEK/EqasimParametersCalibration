@@ -6,12 +6,12 @@ Created on Thu May 22 09:22:46 2025
 @author: dabdelkader
 """
 
-from Utilities.BaseUtility import BaseUtility
-from Utilities.BikeUtility import BikeUtility
-from Utilities.CarUtility import CarUtility
-from Utilities.PtUtility import PtUtility
-from Utilities.WalkUtility import WalkUtility
-from Utilities.ZeroUtility import ZeroUtility
+from .BaseUtility import BaseUtility
+from .BikeUtility import BikeUtility
+from .CarUtility import CarUtility
+from .PtUtility import PtUtility
+from .WalkUtility import WalkUtility
+from .ZeroUtility import ZeroUtility
 from modeShares.ModeShares import ModeShares
 from utils.utils import stable_hash
 import pandas as pd

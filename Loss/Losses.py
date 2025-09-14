@@ -16,7 +16,7 @@ from abc import ABC, abstractmethod
 
 class Losses(ABC):
     
-    def __init__(self, metric="js"): 
+    def __init__(self, metric="mse"): 
         self.metric = metric
 
     def get_loss(self, parameters=None):
@@ -95,7 +95,7 @@ class Losses(ABC):
         return lambda x, y: cosine_similarity([x], [y])[0, 0]
         
     def kl_divergence(self):
-        return lambda x, y: np.sum(rel_entr(x, y + 1e-12))  
+        return lambda x,y: np.sum(rel_entr(x,y + 1e-12))
     
     def js_divergence(self):
         return jensenshannon
@@ -112,7 +112,7 @@ class Losses(ABC):
             actual_probs /= actual_probs.sum()
             pred_probs = np.clip(y, 1e-6, 1)
             pred_probs /= pred_probs.sum()
-            logL = np.sum(actual_probs * np.log(pred_probs))
+            logL = np.sum(actual_probs * np.log(pred_probs) + (1 - actual_probs) * np.log(1 - pred_probs))
             return -logL
         return func
 
