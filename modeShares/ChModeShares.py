@@ -28,7 +28,7 @@ class ChModeShares(ModeShares):
 
         # Initialize all instance variables
         self.trips = None
-        self.transit = None
+        # self.transit = None
         self.mode_shares = {}
         self.distance_labels = []
         self.distance_bins = []
@@ -42,7 +42,7 @@ class ChModeShares(ModeShares):
             self.load_from_cache()
         else:
             self._setup_files()
-            self.trips, self.transit = self._load_data()
+            self.trips = self._load_data()
             
             self.distance_bins = distance_bins if (distance_bins is not None and len(distance_bins)) else \
                                 [0, 1000, 2000, 3000, 4000, 5000, 8000, 12000, 20000, 1000000]
@@ -72,7 +72,7 @@ class ChModeShares(ModeShares):
             self.mode_shares["mode_income"] = self._get_mode_distribution_by("income_class")
             self.mode_shares["mode_age"]    = self._get_mode_distribution_by("age_class")                        
             
-            self.mode_shares["transit"] = self._get_transit_distributions()
+            # self.mode_shares["transit"] = self._get_transit_distributions()
             
             self.save_to_cache()
         
@@ -83,13 +83,13 @@ class ChModeShares(ModeShares):
         """Automatically find latest trips, persons, and transit files."""
         trips_files = glob.glob(os.path.join(self.eqasim_cache_dir, "**", "*data.microcensus.trips*.p"), recursive=True)
         persons_files = glob.glob(os.path.join(self.eqasim_cache_dir, "**", "*data.microcensus.persons*.p"), recursive=True)
-        transit_files = glob.glob(os.path.join(self.eqasim_cache_dir, "**", "*data.microcensus.transit*.p"), recursive=True)
-        if not trips_files or not persons_files or not transit_files:
+        # transit_files = glob.glob(os.path.join(self.eqasim_cache_dir, "**", "*data.microcensus.transit*.p"), recursive=True)
+        if not trips_files or not persons_files:
             raise FileNotFoundError("Could not find required trips/persons/transit files")
 
         self.trips_file   = max(trips_files, key=os.path.getctime)
         self.persons_file = max(persons_files, key=os.path.getctime)
-        self.transit_file = max(transit_files, key=os.path.getctime)
+        # self.transit_file = max(transit_files, key=os.path.getctime)
 
     def _load_data(self):
         trips, filterout_ids = pd.read_pickle(self.trips_file)
@@ -115,12 +115,12 @@ class ChModeShares(ModeShares):
         trips["sp_region"] = trips["sp_region"].astype(int)
         
         # loadt trasit
-        transit = pd.read_pickle(self.transit_file)
-        transit = transit[["person_id","trip_id","in_vehicle_time","line_switches","access_egress_time","waiting_time"]]
-        sel = transit.person_id.isin(trips.person_id.unique())
-        transit = transit[sel].reset_index(drop=True)
+        # transit = pd.read_pickle(self.transit_file)
+        # transit = transit[["person_id","trip_id","in_vehicle_time","line_switches","access_egress_time","waiting_time"]]
+        # sel = transit.person_id.isin(trips.person_id.unique())
+        # transit = transit[sel].reset_index(drop=True)
         
-        return trips, transit
+        return trips #, transit
 
     def _get_mode_shares(self):
         total_person_weight = self.trips['person_weight'].sum()

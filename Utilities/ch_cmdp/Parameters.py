@@ -130,7 +130,7 @@ class Parameters(ABC):
         for name, obj in inspect.getmembers(cls):
             if inspect.isclass(obj) and obj != cls:                
                 for key, value in inspect.getmembers(obj):
-                    if (not key.startswith('__')) and (isinstance(value, float)):
+                    if (not key.startswith('__')) and ((isinstance(value, float)) or (isinstance(value, int))):
                         if name=="cost":
                             data[key] = float(value)
                         else:                        
