@@ -50,10 +50,31 @@ class Optimizer(ABC):
         self.lb = [self.initial_values[p] - self.bounds[p] for p in self.param_names]
         self.ub = [self.initial_values[p] + self.bounds[p] for p in self.param_names]
         
+        self.set_scalers()
+        
         self.explored_solutions = []
+        self.explored_scaled_solutions = []
         self.explored_objectives = []
+    
+    def set_scalers(self):
+        assert len(self.lb)>0, "Bounds cannot be empty."
+        assert len(self.lb) == len(self.ub), "Lower and upper bounds must have the same length."
+        assert all(ub > lb for lb, ub in zip(self.lb, self.ub)), "Each upper bound must be greater than the corresponding lower bound."
+        
+        lb, ub = np.array(self.lb), np.array(self.ub)
+        self.params_scaler = lambda x: (x - lb) / (ub - lb)
+        self.params_unscaler = lambda x: x * (ub - lb) + lb
 
     @abstractmethod
+    def _optimize(self, *args, **kwargs) -> Dict[str, Any]:
+        """
+        Internal method to run the optimization algorithm.
+
+        Returns:
+        - Dict containing 'params' and 'loss'
+        """
+        pass
+
     def optimize(self, *args, overwrite=False, **kwargs) -> Dict[str, Any]:
         """
         Run the optimization and return the best result.
@@ -66,18 +87,20 @@ class Optimizer(ABC):
         """
         if not overwrite:
             self.load_state()
-        pass
 
-    def _objective(self, parameters: list, scaled_params:list=None) -> float:
-        """Objective function wrapper"""        
+        results = self._optimize(*args, overwrite=overwrite, **kwargs)
+        self.save_state()
+        return results
+
+    def _objective(self, scaled_parameters: list) -> float:
+        """Objective function wrapper"""   
+        parameters = self.params_unscaler(scaled_parameters)
+
         param_dict = dict(zip(self.param_names, parameters))
         loss = float(self.objective_function.get_loss(param_dict))
-        
-        if scaled_params is None:
-            self.explored_solutions.append(list(parameters))
-        else:
-            self.explored_solutions.append(list(scaled_params))
-            
+
+        self.explored_solutions.append(parameters.tolist())
+        self.explored_scaled_solutions.append(scaled_parameters.tolist())
         self.explored_objectives.append(loss)
         return loss
 
@@ -99,6 +122,7 @@ class Optimizer(ABC):
     def save_state(self):
         data = dict(explored_solutions = self.explored_solutions,
                     explored_objectives = self.explored_objectives,
+                    explored_scaled_solutions = self.explored_scaled_solutions,
                     lb = self.lb,
                     ub = self.ub,
                     param_names = self.param_names,
@@ -108,6 +132,7 @@ class Optimizer(ABC):
         # save it as json file
         with open(file_path, "w") as f:
             json.dump(data, f)
+        logger.info(f"Saved optimization state to cache with {len(self.explored_solutions)} evaluated solutions.")
 
     def load_state(self):
         file_path = self.cache_state_file
@@ -120,14 +145,17 @@ class Optimizer(ABC):
                 self.ub = data["ub"]
                 self.explored_solutions = data["explored_solutions"]
                 self.explored_objectives = data["explored_objectives"]
+                self.explored_scaled_solutions = data["explored_scaled_solutions"]
                 self.initial_values = data["initial_values"]
+                self.set_scalers()
+                logger.info(f"Loaded optimization state from cache with {len(self.explored_solutions)} evaluated solutions.")
             else:
                 logger.warning("Optimization state found in the cache, but the cached state does not match current parameters.")
         else:
             logger.info("No optimization state found in the cache. Starting fresh.")
 
     def plot(self, show = False, max_len=6000):
-        l = self.explored_solutions[-max_len:]  # get the last max_len solutions
+        l = self.explored_scaled_solutions[-max_len:]  # get the last max_len solutions
         if len(l):
             l = [list(li) for li in l]
             l = np.array(l)

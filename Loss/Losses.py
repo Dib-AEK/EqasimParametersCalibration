@@ -89,7 +89,7 @@ class Losses(ABC):
         return mean_absolute_error
     
     def mape(self):
-        mean_absolute_percentage_error
+        return mean_absolute_percentage_error
     
     def cosine_similarity(self):
         return lambda x, y: cosine_similarity([x], [y])[0, 0]
