@@ -75,6 +75,8 @@ tours_util = TourUtility.tours.collect()["eqasim_utility"]
 all_util = TourUtility.get_all_utilities().collect()["utility"]
 assert np.allclose(tours_util[:100], all_util[:100], atol=5e-3), "The utilities that are estimated do not match the actual ones"
 
+# Find rapidely closest alpha values (approach the minimum)
+_ = get_optimal_alphas(args, myLoss)
 
 # find the optimal parameters through optimization
 optimizer = get_optimizer(args,  objective_function=myLoss)
