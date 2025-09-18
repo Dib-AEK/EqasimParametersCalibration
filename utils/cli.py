@@ -82,6 +82,8 @@ def parse_args() -> argparse.Namespace:
     
     parser.add_argument("--utilities", choices=["ch", "ch_cmdp"], default="ch")
 
+    parser.add_argument("--beta-decay-method", type=str, default="step", help="Beta decay method",
+                        choices=["step", "linear", "sigmoid", "cosine", "logarithmic", "constant"])
     return check_and_validate_args(parser.parse_args())
 
 

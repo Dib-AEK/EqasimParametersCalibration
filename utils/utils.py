@@ -118,9 +118,9 @@ def get_files(args):
 
 
 
-def get_beta_and_population(args, beta_method = "step", population_method = "step"):
+def get_beta_and_population(args, population_method = "step"):
     BetaRateRise.set_beta(args.beta_momentum)
-    beta = BetaRateRise.get_beta(args.iteration, method=beta_method)
+    beta = BetaRateRise.get_beta(args.iteration, method=args.beta_decay_method)
 
     PopulationFactor.set_population(args.population_sample)
     population = PopulationFactor.get_population(args.iteration, method = population_method)
