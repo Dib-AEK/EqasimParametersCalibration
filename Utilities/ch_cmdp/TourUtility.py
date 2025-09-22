@@ -193,9 +193,12 @@ class TourUtility(BaseUtility):
         
 
     @staticmethod
-    def read_csv(file_path):
+    def read_csv(file_path):        
         df = (
             pl.read_csv(file_path, separator=";")
+            .filter(
+                ~pl.col("candidate_mode").str.contains("loop")
+                )
             .with_columns(
                 # Split strings into lists
                 pl.col("trips_index").str.split(","),
