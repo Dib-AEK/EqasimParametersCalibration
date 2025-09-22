@@ -499,8 +499,10 @@ class CMAESOptimizer(Optimizer):
             es.disp()
             iteration += 1
 
-            keep_runing = not np.allclose(solutions[1:], solutions[:-1], atol=tolx)
-
+            #keep_runing = not np.allclose(solutions[1:], solutions[:-1], atol=tolx)
+            keep_runing = not es.stop()
+            
+            
         # Get the best solution among last 10 iterations
         num = es.popsize * 10
         recent_solutions = self.explored_solutions[-num:] if len(self.explored_solutions) >= num else None

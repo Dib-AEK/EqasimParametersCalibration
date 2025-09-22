@@ -68,7 +68,7 @@ class Loss(Losses):
         self.calibrated_modes_weights = np.array([WEIGHT_MODE[mode] for mode in self.calibration_modes]).reshape(-1,1)
         self.calibrated_modes_weights_vot = np.array([WEIGHT_MODE_VOT[mode] for mode in self.calibration_modes]).reshape(-1,1)
         
-
+        self.eps = 0.0 if metric in ["mse, mae","mape"] else 0.2
         self.losses_record = {key: [] for key in objectives}
         
     def _get_vot(self):
@@ -219,12 +219,11 @@ class Loss(Losses):
                 yd0 = (estimated[:,:1]*mode_weight)[sel_mode].flatten()
                 k_loss += 2.5*loss_func(xd0, yd0)
                 
-            self.losses_record[k].append(k_loss)
+            #self.losses_record[k].append(k_loss)
             loss += weight*k_loss
             total_weights += weight
-        
-        eps = 0.0 if metric in ["mse, mae","mape"] else 0.2
-        return np.log(eps + loss/(10*total_weights)) # I use the log because it highlights better the minima
+                
+        return np.log(self.eps + loss/(10*total_weights)) # I use the log because it highlights better the minima
 
     
 
