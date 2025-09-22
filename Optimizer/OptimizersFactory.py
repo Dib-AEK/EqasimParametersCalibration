@@ -420,9 +420,9 @@ class CMAESOptimizer(Optimizer):
             max_iterations = 80
             alpha = self.matsim_iteration / max_iterations
             alpha = max(min(alpha,1),0)
-            tolx = 1e-3 + (1- alpha) * (2e-2 - 1e-3)
+            tolx = 1e-3 + (1- alpha) * 1e-2 
         else:
-            tolx = 5e-3
+            tolx = 2e-3
         return tolx
 
     def get_min_sigma(self):
@@ -447,7 +447,7 @@ class CMAESOptimizer(Optimizer):
         options.set("bounds", [np.zeros_like(self.lb), np.ones_like(self.ub)])
         options.set("maxfevals", evals)
         options.set("popsize", popsize)
-        options.set("tolfun", 1e-3)  # Stop if function value changes less than 1e-3
+        options.set("tolfun", 1e-4)  # Stop if function value changes less than 1e-4
         options.set("tolx", tolx)    # Stop if parameters change less than 5e-3
         options.set("seed", 1102)
         es = cma.CMAEvolutionStrategy(x0, sigma, options)
@@ -463,12 +463,13 @@ class CMAESOptimizer(Optimizer):
             or len(self.explored_objectives) == 0
             or overwrite
         )
-        evals = self.max_evals if new_optimizer else self.max_evals + 2000
+        max_history_points = 3000
+        evals = self.max_evals if new_optimizer else self.max_evals + max_history_points
 
         es = self.start_new_optimizer(evals=evals)
 
         if not new_optimizer:
-            number_of_points = min(2000, len(self.explored_objectives))
+            number_of_points = min(max_history_points, len(self.explored_objectives))
             num_last_iterations = (number_of_points//es.popsize) * es.popsize
             es.feed_for_resume(self.explored_scaled_solutions[-num_last_iterations:],
                                self.explored_objectives[-num_last_iterations:])
