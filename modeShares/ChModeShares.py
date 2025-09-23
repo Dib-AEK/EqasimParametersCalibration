@@ -105,9 +105,11 @@ class ChModeShares(ModeShares):
         # Merge with persons to get weights
         trips = trips.merge(persons, how="left", on="person_id")
         
+        modes = ["car","pt","bike","walk","car_passenger"]
         sel = ((trips.household_weight.notna()) & 
                (trips.person_weight.notna()) &
-               (trips.crowfly_distance>1) )
+               (trips.crowfly_distance>1) &
+               (trips["mode"].isin(modes)) )
         trips = trips[sel].reset_index(drop=True)       
         trips["canton_id"] = trips["canton_id"].astype(int)
         trips["income_class"] = trips["income_class"].astype(int)
