@@ -76,7 +76,7 @@ all_util = TourUtility.get_all_utilities().collect()["utility"]
 assert np.allclose(tours_util[:100], all_util[:100], atol=5e-3), "The utilities that are estimated do not match the actual ones"
 
 # Find rapidely closest alpha values (approach the minimum)
-_ = get_optimal_alphas(args, myLoss)
+_ = get_optimal_alphas(args, myLoss, tol = 1e-3)
 
 # find the optimal parameters through optimization
 optimizer = get_optimizer(args,  objective_function=myLoss)
@@ -89,7 +89,7 @@ dt = time.time() - t0
 logger.info(f"iter{args.iteration}: Optimization completed in {int(dt//60)}:{int(dt%60):02d} minutes")
 
 # Find rapidely closest alpha values (ensure global mode shares are correct)
-_ = get_optimal_alphas(args, myLoss)
+_ = get_optimal_alphas(args, myLoss, tol = 1e-4)
 
 # plot the optimization process
 optimizer.plot(show=False)

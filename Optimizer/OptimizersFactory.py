@@ -273,7 +273,7 @@ class FiniteDifferenceAdamOptimizer(Optimizer):
 
 @register_optimizer("kai")
 class KaiOptimizer(Optimizer):
-    def _optimize(self, *args, **kwargs):        
+    def _optimize(self, *args, tol = 1e-3, **kwargs):        
         logger.info("Using Kai utility calibration formula...")
 
         modes = ["pt", "car", "walk", "bike", "car_passenger"]
@@ -282,7 +282,6 @@ class KaiOptimizer(Optimizer):
         logger.info(f"The reference mode used in Kai optimizer is: {reference_mode}")
 
         max_iter = 20
-        tol = 1e-3
         prev_mode_shares = None
         optimal_params = None
         loss_function = self.objective_function.mse()
@@ -518,6 +517,6 @@ class CMAESOptimizer(Optimizer):
         return {"params": dict(zip(self.param_names, xbest)), "loss": es.result.fbest}    
         
 
-def get_optimal_alphas(args, myLoss):
+def get_optimal_alphas(args, myLoss, tol=1e-3):
     optimizer = KaiOptimizer(args,  objective_function=myLoss)
-    return optimizer._optimize(overwrite=True, matsim_iteration = args.iteration)        
+    return optimizer._optimize(overwrite=True, matsim_iteration = args.iteration, tol=tol)        
