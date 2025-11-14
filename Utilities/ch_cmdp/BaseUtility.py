@@ -92,6 +92,7 @@ class BaseUtility(ABC, metaclass=MetaCls):
             pl.col("euclideanDistance_km").cast(pl.Float64),
             pl.col("utility").cast(pl.Float64),
             pl.col("subUrbanDestination").cast(pl.Int8) if "subUrbanDestination" in df.columns else None,
+            pl.col("destinationHome").cast(pl.Int8) if "destinationHome" in df.columns else None,
         )
         return df
 

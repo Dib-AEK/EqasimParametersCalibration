@@ -39,7 +39,9 @@ class CarUtility(BaseUtility):
 
     @staticmethod
     def parkingSearchDuration():
-        return ( pl.when(pl.col("urbanDestination") == 1)
+        return ( pl.when((pl.col("destinationWork") == 1) | (pl.col("destinationHome") == 1))
+                   .then(0.0)
+                   .when(pl.col("urbanDestination") == 1)
                    .then(BaseUtility.parking.urbanParkingSearchDuration_min)
                    .when(pl.col("subUrbanDestination") == 1)
                    .then(BaseUtility.parking.suburbanParkingSearchDuration_min)
