@@ -116,9 +116,9 @@ class TestDistanceComparison(unittest.TestCase):
             matsim_distances = self.matsim_trips.loc[mask_matsim, "euclidean_distance_km"]
             
             ax.hist(mz_distances, bins=bins, density=True, alpha=0.5,
-                   label="MZ", weights=mz_weights)
+                    label="MZ", weights=mz_weights)
             ax.hist(matsim_distances, bins=bins, density=True, alpha=0.5,
-                   label="MATSim")
+                    label="MATSim")
             
             plt.close()
             
